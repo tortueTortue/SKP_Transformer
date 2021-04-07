@@ -8,22 +8,22 @@ from torchvision.utils import make_grid
 
 from typing import Any, Callable, Optional, Tuple
 
-dataset = CIFAR10(root='data/', download=True, transform=ToTensor())
-test_dataset = CIFAR10(root='data/', train=False, transform=ToTensor())
+# dataset = CIFAR10(root='data/', download=True, transform=ToTensor())
+# test_dataset = CIFAR10(root='data/', train=False, transform=ToTensor())
 
-labels = dataset.classes
-classes = ['airplane', 'automobile', 'bird', 'cat', 'deer',
-           'dog', 'deer', 'frog', 'horse', 'ship', 'truck' ]
+# labels = dataset.classes
+# classes = ['airplane', 'automobile', 'bird', 'cat', 'deer',
+#            'dog', 'deer', 'frog', 'horse', 'ship', 'truck' ]
 
-torch.manual_seed(43)
-train_dataset, val_dataset = random_split(dataset, [int(len(dataset) * 0.85),
-                                                    int(len(dataset) * 0.15)])
+# torch.manual_seed(43)
+# train_dataset, val_dataset = random_split(dataset, [int(len(dataset) * 0.85),
+#                                                     int(len(dataset) * 0.15)])
 
-batch_size=128
+# batch_size=128
 
-train_loader = DataLoader(train_dataset, batch_size, shuffle=True, num_workers=4, pin_memory=True)
-val_loader = DataLoader(val_dataset, batch_size*2, num_workers=4, pin_memory=True)
-test_loader = DataLoader(test_dataset, batch_size*2, num_workers=4, pin_memory=True)
+# train_loader = DataLoader(train_dataset, batch_size, shuffle=True, num_workers=4, pin_memory=True)
+# val_loader = DataLoader(val_dataset, batch_size*2, num_workers=4, pin_memory=True)
+# test_loader = DataLoader(test_dataset, batch_size*2, num_workers=4, pin_memory=True)
 
 class CIFAR10WithIndices(CIFAR10):
 
