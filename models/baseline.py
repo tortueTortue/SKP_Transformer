@@ -1,10 +1,45 @@
 import torchvision.models as models
 from torchvision.models.resnet import ResNet, BasicBlock
 from torch.utils.data.dataloader import DataLoader
-from ..utils.utils import get_default_device, batches_to_device, to_device
-from ..dataset.cifar_data_loaders import train_loader, val_loader, test_loader
+# from ..utils.utils import get_default_device, batches_to_device, to_device
+# from ..dataset.cifar_data_loaders import train_loader, val_loader, test_loader
 import torch.nn as nn
 import torch
+import torch
+import matplotlib.pyplot as plt
+from torch.utils.data.dataloader import DataLoader
+from torchvision.datasets import CIFAR10
+from torchvision.transforms import ToTensor
+from torch.utils.data import random_split
+from torchvision.utils import make_grid
+
+dataset = CIFAR10(root='data/', download=True, transform=ToTensor())
+test_dataset = CIFAR10(root='data/', train=False, transform=ToTensor())
+
+labels = dataset.classes
+
+torch.manual_seed(43)
+train_dataset, val_dataset = random_split(dataset, [int(len(dataset) * 0.85),
+                                                    int(len(dataset) * 0.15)])
+
+batch_size=30
+
+train_loader = DataLoader(train_dataset, batch_size, shuffle=True, num_workers=4, pin_memory=True)
+val_loader = DataLoader(val_dataset, batch_size*2, num_workers=4, pin_memory=True)
+test_loader = DataLoader(test_dataset, batch_size*2, num_workers=4, pin_memory=True)
+
+
+def get_default_device():
+    return torch.device('cuda') if torch.cuda.is_available() \
+      else torch.device('cpu')
+
+def to_device(data, device):
+    return [to_device(x, device) for x in data] if isinstance(data, (list,tuple)) \
+      else data.to(device, non_blocking=True)
+
+def batches_to_device(data_loader, device):
+    for batch in data_loader:
+        yield to_device(batch, device)
 
 loss = nn.CrossEntropyLoss()
 
@@ -72,3 +107,6 @@ def train_baseline():
     model = to_device(resnet101, device)
 
     train(5, model, train_loader, val_loader)
+
+if __name__ == "__main__":
+    train_baseline()

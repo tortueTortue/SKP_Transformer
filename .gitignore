@@ -127,3 +127,11 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# pytorch data
+data/*
+data/*.tar.gz
+
+runs/*
+
+models/trained_models/*
