@@ -17,9 +17,9 @@ writer = SummaryWriter()
 PATH = ""
 
 def validation_step(model, batch):
-    images, labels = batch 
-    images, labels = images.cuda(), labels.cuda()
-    out = model.forward(images)
+    images, labels, indexes = batch 
+    images, labels, indexes = images.cuda(), labels.cuda(), indexes.cuda()
+    out = model.forward(images, indexes)
     cross_entropy = CrossEntropyLoss()                  
     val_loss = cross_entropy(out, labels)
 
@@ -42,13 +42,15 @@ def train(epochs_no: int, model: Module, train_set: DataLoader, val_set: DataLoa
     for epoch in range(epochs_no):
 
         """  Training Phase """ 
-        for batch in train_set:
+        for batch_index, batch in enumerate(train_set):
             optimizer.zero_grad()
             inputs, labels, indexes = batch
             inputs, labels, indexes = inputs.cuda(), labels.cuda(), indexes.cuda()
             curr_loss = loss(model.forward(inputs, indexes), labels)
             curr_loss.backward()
             optimizer.step()
+            if batch_index == 2000:
+                print("here")
 
         """ Validation Phase """
         result = evaluate(model, val_set, epoch)

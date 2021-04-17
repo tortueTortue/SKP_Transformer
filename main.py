@@ -29,7 +29,8 @@ if __name__ == '__main__':
     """
 
     # SKP TRANSFORMER 100 epochs
-    skp = SKP_Transformer(8, 50000, len(classes))
+    # skp = SKP_Transformer(8, 50000, len(classes))
+    skp = SKP_Transformer(1, 50000, len(classes))
     print(f"Parameters {count_model_parameters(skp, False)}")
     start_time = time.time()
     save_model(train_model(epochs, skp, "SKP", cifar10_data, batch_size, model_dir), "SKP", model_dir)
