@@ -9,7 +9,9 @@ class StochasticAttention(nn.Module):
     def __init__(self, no_of_features, feature_dim, no_of_images):
         super(StochasticAttention, self).__init__()
         
+        # Nombre de photos * 64 * 64
         self.attention_scores = [torch.ones(no_of_features, no_of_features) for _ in range(no_of_images)]
+        # self.attention_scores = [torch.ones(no_of_features, no_of_features, dtype=torch.float16) for _ in range(no_of_images)]
 
         self.w_query = nn.Linear(no_of_features, feature_dim, bias=False)
         self.w_key = nn.Linear(no_of_features, feature_dim, bias=False)

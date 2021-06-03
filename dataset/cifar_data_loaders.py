@@ -41,7 +41,7 @@ class CIFAR10WithIndices(CIFAR10):
 
 class Cifar10Dataset:
     def __init__(self, batch_size=128):
-        dataset = CIFAR10WithIndices(root='data/', download=True, transform=ToTensor())
+        dataset = CIFAR10WithIndices(root='data/', train=True, transform=ToTensor())
         test_dataset = CIFAR10WithIndices(root='data/', train=False, transform=ToTensor())
         
         self.labels = dataset.classes
@@ -52,9 +52,11 @@ class Cifar10Dataset:
         torch.manual_seed(43)
         train_dataset, val_dataset = random_split(dataset, [int(len(dataset) * 0.85),
                                                             int(len(dataset) * 0.15)])
-        self.train_loader = DataLoader(train_dataset, batch_size, shuffle=True, num_workers=4, pin_memory=True)
-        self.val_loader = DataLoader(val_dataset, batch_size*2, num_workers=4, pin_memory=True)
-        self.test_loader = DataLoader(test_dataset, batch_size*2, num_workers=4, pin_memory=True)
+
+        # TODO: Set num of workers to 0 to get a more meanigful error message
+        self.train_loader = DataLoader(train_dataset, batch_size, shuffle=True, num_workers=0, pin_memory=True)
+        self.val_loader = DataLoader(val_dataset, batch_size*2, num_workers=0, pin_memory=True)
+        self.test_loader = DataLoader(test_dataset, batch_size*2, num_workers=0, pin_memory=True)
 
         self.dataset = dataset
 
