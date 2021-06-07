@@ -5,6 +5,7 @@
 
 from models.skp_Transformer import SKP_Transformer
 from models.normal_transformer import Transformer
+from models.na_transformer import Transformer as NATransformer
 
 from training.training_manager import train_model
 from dataset.cifar_data_loaders import Cifar10Dataset
@@ -28,7 +29,9 @@ if __name__ == '__main__':
     M A I N
     """
 
-    # SKP TRANSFORMER 100 epochs
+    #TODO Try lr 1e-4 + momentum .99
+
+    # # SKP TRANSFORMER 100 epochs
     skp = SKP_Transformer(8, 50000, len(classes))
     print(f"Parameters {count_model_parameters(skp, False)}")
     start_time = time.time()
@@ -37,13 +40,25 @@ if __name__ == '__main__':
     print_accuracy_per_class(skp, classes, batch_size, cifar10_data.test_loader)
     print_accuracy(skp, classes, batch_size, cifar10_data.test_loader)
 
-    # SKP TRANSFORMER 100 epochs
+    # # TRANSFORMER 100 epochs
     transformer = Transformer(8, 50000, len(classes))
-    print(f"Parameters {count_model_parameters(skp, False)}")
+    print(f"Parameters {count_model_parameters(transformer, False)}")
     start_time = time.time()
     save_model(train_model(epochs, transformer, "SKP", cifar10_data, batch_size, model_dir), "SKP", model_dir)
+    transformer = load_model(f"E:/Git/SKP_Transformer/models/trained_models/Transformer.pt")
     print(f"Training time for {epochs} epochs : {time.time() - start_time}")
     print_accuracy_per_class(transformer, classes, batch_size, cifar10_data.test_loader)
     print_accuracy(transformer, classes, batch_size, cifar10_data.test_loader)
+
+    # NA TRANSFORMER 100 epochs
+    model_name = "na_transformer"
+    na_transformer = NATransformer(8, 50000, len(classes))
+    print(f"Parameters {count_model_parameters(na_transformer, False)}")
+    start_time = time.time()
+    save_model(train_model(epochs, na_transformer, "na_transformer", cifar10_data, batch_size, model_dir), "na_transformer", model_dir)
+    na_transformer = load_model(f"E:/Git/SKP_Transformer/models/trained_models/na_transformer.pt")
+    print(f"Training time for {epochs} epochs : {time.time() - start_time}")
+    print_accuracy_per_class(na_transformer, classes, batch_size, cifar10_data.test_loader)
+    print_accuracy(na_transformer, classes, batch_size, cifar10_data.test_loader)
 
 

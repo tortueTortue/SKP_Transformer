@@ -14,7 +14,7 @@ class Attention(nn.Module):
         self.w_value = nn.Linear(no_of_features, feature_dim, bias=False)
 
         # TODO Check
-        self.soft = nn.Softmax(dim=2)
+        self.soft = nn.Softmax(dim=1)
 
     def forward(self, x, idx=[]):
         batch_size, no_of_features, feature_size = x.shape
@@ -26,11 +26,11 @@ class Attention(nn.Module):
 
         #TODO Verify formula
         # Shape is supposed to be (b, f)
-        attention_scores = self.soft(torch.einsum('b f d , b f d -> b f'))
+        attention_scores = self.soft(torch.einsum('b f d , b f d -> b f', query, key))
         
         
         # Use attention score for attention
-        attention = torch.einsum('b q s , b v d -> b q v', attention_scores, value)
+        attention = torch.einsum('b s , b v d -> b v d', attention_scores, value)
 
         return attention
 

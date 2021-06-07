@@ -17,9 +17,9 @@ writer = SummaryWriter()
 PATH = ""
 
 def validation_step(model, batch):
-    images, labels = batch 
-    images, labels = images.cuda(), labels.cuda()
-    out = model.forward(images)
+    images, labels, i = batch 
+    images, labels, i = images.cuda(), labels.cuda(), i.cuda()
+    out = model.forward(images, i)
     cross_entropy = CrossEntropyLoss()                  
     val_loss = cross_entropy(out, labels)
 

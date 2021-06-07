@@ -21,9 +21,9 @@ def print_accuracy(model: Module, classes: list, batch_size: int, test_loader):
     model.eval()
     with torch.no_grad():
         for batch in test_loader:
-            i, l = batch
-            i, l = i.cuda(), l.cuda()
-            out = model(i)
+            i, l, idx = batch
+            i, l, idx = i.cuda(), l.cuda(), idx.cuda()
+            out = model(i, idx)
             _, predicted = torch.max(out, 1)
             c = (predicted == l).squeeze()
             for i in range(l.shape[0]):
@@ -40,9 +40,9 @@ def print_accuracy_per_class(model: Module, classes: list, batch_size: int, test
     model.eval()
     with torch.no_grad():
         for batch in test_loader:
-            i, l = batch
-            i, l = i.cuda(), l.cuda()
-            out = model(i)
+            i, l, idx = batch
+            i, l, idx = i.cuda(), l.cuda(), idx.cuda()
+            out = model(i, idx)
             _, predicted = torch.max(out, 1)
             c = (predicted == l).squeeze()
             for i in range(l.shape[0]):
