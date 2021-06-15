@@ -37,7 +37,7 @@ def evaluate(model: Module, val_set: DataLoader, epoch: int):
 def train(epochs_no: int, model: Module, train_set: DataLoader, val_set: DataLoader, model_dir, logger):
     loss = CrossEntropyLoss()
     history = []
-    optimizer = SGD(model.parameters(), lr=0.001, momentum=0.9)
+    optimizer = SGD(model.parameters(), lr=0.00001, momentum=0.9)
 
     for epoch in range(epochs_no):
 
@@ -45,8 +45,10 @@ def train(epochs_no: int, model: Module, train_set: DataLoader, val_set: DataLoa
         for batch in train_set:
             optimizer.zero_grad()
             inputs, labels, indexes = batch
-            inputs, labels, indexes = inputs.cuda(), labels.cuda(), indexes.cuda()
-            curr_loss = loss(model.forward(inputs, indexes), labels)
+            inputs, labels = inputs.cuda(), labels.cuda()
+            curr_loss = loss(model.forward(inputs), labels)
+            # inputs, labels, indexes = inputs.cuda(), labels.cuda(), indexes.cuda()
+            # curr_loss = loss(model.forward(inputs, indexes), labels)
             curr_loss.backward()
             optimizer.step()
 
