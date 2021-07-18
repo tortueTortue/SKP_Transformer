@@ -42,7 +42,7 @@ if __name__ == '__main__':
     # print(f"Training time for {epochs} epochs : {time.time() - start_time}")
     # print_accuracy_per_class(skp, classes, batch_size, cifar10_data.test_loader)
     # print_accuracy(skp, classes, batch_size, cifar10_data.test_loader)
-#TODO Start over all tests
+    #TODO Start over all tests
     # # TRANSFORMER 100 epochs
     # transformer = Transformer(2, 50000, len(classes))
     # print(f"Parameters {count_model_parameters(transformer, False)}")

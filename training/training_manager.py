@@ -10,6 +10,8 @@ from training.utils.utils import batches_to_device, get_default_device, to_devic
 from training.metrics.metrics import accuracy
 from training.utils.logger import start_training_logging
 
+from optimizer.sam import SAM
+
 from torch.utils.tensorboard import SummaryWriter
 writer = SummaryWriter()
 
@@ -34,10 +36,14 @@ def evaluate(model: Module, val_set: DataLoader, epoch: int):
     epoch_acc = torch.stack(batch_accs).mean()
     return {'val_loss': epoch_loss.item(), 'val_acc': epoch_acc.item(), 'epoch' : epoch}
 
-def train(epochs_no: int, model: Module, train_set: DataLoader, val_set: DataLoader, model_dir, logger):
+def train(epochs_no: int, model: Module, train_set: DataLoader, val_set: DataLoader, model_dir, logger, with_sam_opt: bool = False):
     loss = CrossEntropyLoss()
     history = []
-    optimizer = SGD(model.parameters(), lr=0.00001, momentum=0.9)
+
+    if with_sam_opt:
+        optimizer = SAM(model.parameters(), SGD(), lr=0.0001, momentum=0.9)
+    else:
+        optimizer = SGD(model.parameters(), lr=0.0001, momentum=0.9)
 
     for epoch in range(epochs_no):
 
@@ -50,7 +56,18 @@ def train(epochs_no: int, model: Module, train_set: DataLoader, val_set: DataLoa
             # inputs, labels, indexes = inputs.cuda(), labels.cuda(), indexes.cuda()
             # curr_loss = loss(model.forward(inputs, indexes), labels)
             curr_loss.backward()
-            optimizer.step()
+            if with_sam_opt:
+                optimizer.first_step(zero_grad=True)
+
+                # Second pass
+                loss(model.forward(inputs), labels)
+                optimizer.second_step(zero_grad=True)
+            else:
+                optimizer.step()
+
+            # TODO: A voir
+            # model.avgs -= lr* model.avgs.gradient
+            # model.std -= lr* model.std.gradient
 
         """ Validation Phase """
         result = evaluate(model, val_set, epoch)
@@ -78,6 +95,6 @@ def train_model(epochs_no: int, model_to_train: Module, model_name: str, dataset
 
     model = to_device(model_to_train, device)
 
-    history = train(epochs_no, model, train_loader, val_loader, model_dir, logger)
+    history = train(epochs_no, model, train_loader, val_loader, model_dir, logger, with_sam_opt=True)
 
     return model

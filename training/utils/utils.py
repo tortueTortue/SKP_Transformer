@@ -35,3 +35,6 @@ def load_model(path: str):
   model.eval()
 
   return model
+
+def clear_memory():
+  torch.cuda.empty_cache()

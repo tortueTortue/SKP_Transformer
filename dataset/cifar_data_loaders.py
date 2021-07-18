@@ -41,7 +41,7 @@ class CIFAR10WithIndices(CIFAR10):
 
 
 class Cifar10Dataset:
-    def __init__(self, batch_size=128):
+    def __init__(self, batch_size=128): #TODO Add with indexes params and transform
         dataset = CIFAR10WithIndices(root='data/', download=True, transform=transforms.Compose([
             transforms.Resize((384, 384)),
             transforms.ToTensor(),
@@ -65,9 +65,9 @@ class Cifar10Dataset:
         self.train_loader = DataLoader(
             train_dataset, batch_size, shuffle=True, num_workers=4, pin_memory=True)
         self.val_loader = DataLoader(
-            val_dataset, batch_size*2, num_workers=4, pin_memory=True)
+            val_dataset, batch_size, num_workers=4, pin_memory=True)
         self.test_loader = DataLoader(
-            test_dataset, batch_size*2, num_workers=4, pin_memory=True)
+            test_dataset, batch_size, num_workers=4, pin_memory=True)
 
         self.dataset = dataset
 
