@@ -10,6 +10,8 @@ from training.utils.utils import batches_to_device, get_default_device, to_devic
 from training.metrics.metrics import accuracy
 from training.utils.logger import start_training_logging
 
+from models.stoch_transformer import propagate_attention
+
 from optimizer.sam import SAM
 
 from torch.utils.tensorboard import SummaryWriter
@@ -36,7 +38,7 @@ def evaluate(model: Module, val_set: DataLoader, epoch: int):
     epoch_acc = torch.stack(batch_accs).mean()
     return {'val_loss': epoch_loss.item(), 'val_acc': epoch_acc.item(), 'epoch' : epoch}
 
-def train(epochs_no: int, model: Module, train_set: DataLoader, val_set: DataLoader, model_dir, logger, with_sam_opt: bool = False):
+def train(epochs_no: int, model: Module, train_set: DataLoader, val_set: DataLoader, model_dir, logger, lr, with_sam_opt: bool = False):
     loss = CrossEntropyLoss()
     history = []
 
@@ -66,8 +68,7 @@ def train(epochs_no: int, model: Module, train_set: DataLoader, val_set: DataLoa
                 optimizer.step()
 
             # TODO: A voir
-            # model.avgs -= lr* model.avgs.gradient
-            # model.std -= lr* model.std.gradient
+            propagate_attention(model, lr, None)
 
         """ Validation Phase """
         result = evaluate(model, val_set, epoch)
@@ -95,6 +96,8 @@ def train_model(epochs_no: int, model_to_train: Module, model_name: str, dataset
 
     model = to_device(model_to_train, device)
 
-    history = train(epochs_no, model, train_loader, val_loader, model_dir, logger, with_sam_opt=True)
+    lr = 0.0001
+
+    history = train(epochs_no, model, train_loader, val_loader, model_dir, logger, lr, with_sam_opt=True)
 
     return model

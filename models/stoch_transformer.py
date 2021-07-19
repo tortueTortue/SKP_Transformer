@@ -7,6 +7,8 @@ from torch import nn
 from torch import Tensor 
 from torch.nn import functional as F
 
+from torch.nn.parameter import Parameter
+
 import math
 
 
@@ -36,8 +38,8 @@ class GaussianSelfAttention(nn.Module):
         self.n_heads = num_heads
         # self.scores = None
         self.grid_dim = np.sqrt(no_of_patches)
-        self.avgs = torch.zeros(no_of_imgs, 2, self.grid_dim) # no_of_imgs * 2 (x and y)
-        self.std_devs = torch.ones(no_of_imgs, 2, self.grid_dim)# no_of_imgs * 2 (x and y)
+        self.avgs = Parameter(no_of_imgs, 2, self.grid_dim) # no_of_imgs * 2 (x and y)
+        self.std_devs = Parameter(no_of_imgs, 2, self.grid_dim)# no_of_imgs * 2 (x and y)
 
     def forward(self, x, mask, img_ids):
         """
@@ -154,3 +156,9 @@ class Transformer(nn.Module):
         for block in self.blocks:
             x = block(x, mask)
         return x
+
+
+def propagate_attention(model, lr, momentum):
+    for block in model.blocks:
+        block.attn.avgs -= lr * block.attn.avgs.gradient
+        block.attn.std_devs -= lr * block.attn.std_devs.gradient
