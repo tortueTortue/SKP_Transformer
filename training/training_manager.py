@@ -68,7 +68,7 @@ def train(epochs_no: int, model: Module, train_set: DataLoader, val_set: DataLoa
                 optimizer.step()
 
             # TODO: A voir
-            propagate_attention(model, lr, None)
+            propagate_attention(model, lr, indexes, None)
 
         """ Validation Phase """
         result = evaluate(model, val_set, epoch)

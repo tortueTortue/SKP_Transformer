@@ -38,8 +38,8 @@ class GaussianSelfAttention(nn.Module):
         self.n_heads = num_heads
         # self.scores = None
         self.grid_dim = np.sqrt(no_of_patches)
-        self.avgs = Parameter(no_of_imgs, 2, self.grid_dim) # no_of_imgs * 2 (x and y)
-        self.std_devs = Parameter(no_of_imgs, 2, self.grid_dim)# no_of_imgs * 2 (x and y)
+        self.avgs = Parameter(no_of_imgs, 2, no_of_patches) # no_of_imgs * 2 (x and y)
+        self.std_devs = Parameter(no_of_imgs, 2, no_of_patches)# no_of_imgs * 2 (x and y)
 
     def forward(self, x, mask, img_ids):
         """
@@ -68,8 +68,8 @@ class GaussianSelfAttention(nn.Module):
             for i in range(self.grid_dim ** 2):
                 # Note 1: The samples are continuous
                 # Note 2: Need to find a way to sample for every image from batch at once
-                key_x = torch.normal(mean=self.avgs[img_id][0], std=self.std_devs[img_id][0])
-                key_y = torch.normal(mean=self.avgs[img_id][1], std=self.std_devs[img_id][1])
+                key_x = torch.normal(mean=self.avgs[img_id][0][i], std=self.std_devs[img_id][0][i])
+                key_y = torch.normal(mean=self.avgs[img_id][1][i], std=self.std_devs[img_id][1][i])
 
                 key_x_1 = torch.ceil(key_x)
                 key_x_2 = torch.floor(key_x)
@@ -85,12 +85,52 @@ class GaussianSelfAttention(nn.Module):
                 key_index[3] = self.grid_dim * key_y_2 + key_x_2 
 
                 
-                sampled_keys = torch.stack(k[key_index[0]], k[key_index[1]], k[key_index[2]], k[key_index[3]])
-                sampled_values = torch.stack(v[key_index[0]], v[key_index[1]], v[key_index[2]], v[key_index[3]])
-                att_patch.append(softmax(q[j][i] * sampled_keys) * sampled_values)
+                sampled_keys = torch.stack((k[key_index[0]], k[key_index[1]], k[key_index[2]], k[key_index[3]]) #4 * 256
+                sampled_values = torch.stack((v[key_index[0]], v[key_index[1]], v[key_index[2]], v[key_index[3]])) #4 * 256
+                att_patch.append(F.softmax(q[j][i] * sampled_keys, dim=1) * sampled_values)
             
             att.stack(att_patch)
             att_patch = []
+
+        return torch.stack(att)
+
+        att = []
+
+        for j in img_ids:
+            indexes = list
+        
+            # 256
+            key_x = torch.normal(mean=self.avgs[img_id][0], std=self.std_devs[img_id][0])
+            key_y = torch.normal(mean=self.avgs[img_id][1], std=self.std_devs[img_id][1])
+
+            key_x_1 = torch.ceil(key_x)
+            key_x_2 = torch.floor(key_x)
+            key_y_1 = torch.ceil(key_y)
+            key_y_2 = torch.floor(key_y)
+
+
+            key_index = []
+            key_index[0] = self.grid_dim * key_y_1 + key_x_1 
+            key_index[1] = self.grid_dim * key_y_1 + key_x_2 
+            key_index[2] = self.grid_dim * key_y_2 + key_x_1 
+            key_index[3] = self.grid_dim * key_y_2 + key_x_2 
+
+            #k - b, 256 * 256
+
+            # k -> b * 256 * 256 --> k[j] -> 256 * 256, k[j][1] --> 256 
+
+            # Error n2 --> On veut 256 * 4 * 256, donc pour 256 queries, on veut 4 key de dimensions 256
+            sampled_keys = torch.stack((k[j][key_index[0]], k[j][key_index[1]], 
+                                        k[j][key_index[2]], k[j][key_index[3]])).transpose(dim0=0, dim1=1)#4 * 256 * 256
+            sampled_values = torch.stack((v[j][key_index[0]], v[j][key_index[1]], 
+                                          v[j][key_index[2]], v[j][key_index[3]])).transpose(dim0=0, dim1=1)#4 * 256 * 256
+
+            # q -> b * 256 *256 ---> q[j] -> 256*256
+            # sampled_keys 4 * 256 * 256
+            # 4 --> keys * q
+            # q[j] * 
+            att.stack(F.softmax(q[j] * sampled_keys, dim=1) * sampled_values)
+
 
         return torch.stack(att)
 
@@ -158,7 +198,7 @@ class Transformer(nn.Module):
         return x
 
 
-def propagate_attention(model, lr, momentum):
+def propagate_attention(model, lr, indexes, momentum):
     for block in model.blocks:
-        block.attn.avgs -= lr * block.attn.avgs.gradient
-        block.attn.std_devs -= lr * block.attn.std_devs.gradient
+        block.attn.avgs[indexes] -= lr * block.attn.avgs.gradient[indexes]
+        block.attn.std_devs[indexes] -= lr * block.attn.std_devs.gradient[indexes]
