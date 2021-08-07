@@ -62,39 +62,39 @@ class GaussianSelfAttention(nn.Module):
 
         att = []
 
-        for j, img_id in enumerate(img_ids):
-            indexes = list
-            att_patch = []
-            for i in range(self.grid_dim ** 2):
-                # Note 1: The samples are continuous
-                # Note 2: Need to find a way to sample for every image from batch at once
-                key_x = torch.normal(mean=self.avgs[img_id][0][i], std=self.std_devs[img_id][0][i])
-                key_y = torch.normal(mean=self.avgs[img_id][1][i], std=self.std_devs[img_id][1][i])
+        # for j, img_id in enumerate(img_ids):
+        #     indexes = list
+        #     att_patch = []
+        #     for i in range(self.grid_dim ** 2):
+        #         # Note 1: The samples are continuous
+        #         # Note 2: Need to find a way to sample for every image from batch at once
+        #         key_x = torch.normal(mean=self.avgs[img_id][0][i], std=self.std_devs[img_id][0][i])
+        #         key_y = torch.normal(mean=self.avgs[img_id][1][i], std=self.std_devs[img_id][1][i])
 
-                key_x_1 = torch.ceil(key_x)
-                key_x_2 = torch.floor(key_x)
-                key_y_1 = torch.ceil(key_y)
-                key_y_2 = torch.floor(key_y)
-                # 256 * 256
-                # 16 * 16 --> s
+        #         key_x_1 = torch.ceil(key_x)
+        #         key_x_2 = torch.floor(key_x)
+        #         key_y_1 = torch.ceil(key_y)
+        #         key_y_2 = torch.floor(key_y)
+        #         # 256 * 256
+        #         # 16 * 16 --> s
 
-                key_index = []
-                key_index[0] = self.grid_dim * key_y_1 + key_x_1 
-                key_index[1] = self.grid_dim * key_y_1 + key_x_2 
-                key_index[2] = self.grid_dim * key_y_2 + key_x_1 
-                key_index[3] = self.grid_dim * key_y_2 + key_x_2 
+        #         key_index = []
+        #         key_index[0] = self.grid_dim * key_y_1 + key_x_1 
+        #         key_index[1] = self.grid_dim * key_y_1 + key_x_2 
+        #         key_index[2] = self.grid_dim * key_y_2 + key_x_1 
+        #         key_index[3] = self.grid_dim * key_y_2 + key_x_2 
 
                 
-                sampled_keys = torch.stack((k[key_index[0]], k[key_index[1]], k[key_index[2]], k[key_index[3]]) #4 * 256
-                sampled_values = torch.stack((v[key_index[0]], v[key_index[1]], v[key_index[2]], v[key_index[3]])) #4 * 256
-                att_patch.append(F.softmax(q[j][i] * sampled_keys, dim=1) * sampled_values)
+        #         sampled_keys = torch.stack((k[key_index[0]], k[key_index[1]], k[key_index[2]], k[key_index[3]]) #4 * 256
+        #         sampled_values = torch.stack((v[key_index[0]], v[key_index[1]], v[key_index[2]], v[key_index[3]])) #4 * 256
+        #         att_patch.append(F.softmax(q[j][i] * sampled_keys, dim=1) * sampled_values)
             
-            att.stack(att_patch)
-            att_patch = []
+        #     att.stack(att_patch)
+        #     att_patch = []
 
-        return torch.stack(att)
+        # return torch.stack(att)
 
-        att = []
+        # att = []
 
         for j in img_ids:
             indexes = list

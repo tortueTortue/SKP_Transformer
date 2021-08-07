@@ -7,7 +7,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from .transformer import Transformer
+from models.stoch_transformer import Transformer
 
 
 class PositionalEmbedding1D(nn.Module):
