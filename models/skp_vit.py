@@ -22,7 +22,7 @@ class PositionalEmbedding1D(nn.Module):
         return x + self.pos_embedding
 
 
-class ViT(nn.Module):
+class StochViT(nn.Module):
     """
     Args:
         in_channels (int): Number of channels in input data
