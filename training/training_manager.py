@@ -14,8 +14,8 @@ from models.stoch_transformer import propagate_attention
 
 from optimizer.sam.sam import SAM
 
-from torch.utils.tensorboard import SummaryWriter
-writer = SummaryWriter()
+# from torch.utils.tensorboard import SummaryWriter
+# writer = SummaryWriter()
 
 # TODO : Add configs for this one
 PATH = ""
