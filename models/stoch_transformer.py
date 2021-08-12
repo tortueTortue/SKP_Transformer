@@ -59,44 +59,7 @@ class GaussianSelfAttention(nn.Module):
         q, k, v = self.proj_q(x), self.proj_k(x), self.proj_v(x)
         # q, k, v = (split_last(x, (self.n_heads, -1)).transpose(1, 2) for x in [q, k, v])
 
-
-        scores = torch.zeros()
-
         att = []
-
-        # for j, img_id in enumerate(img_ids):
-        #     indexes = list
-        #     att_patch = []
-        #     for i in range(self.grid_dim ** 2):
-        #         # Note 1: The samples are continuous
-        #         # Note 2: Need to find a way to sample for every image from batch at once
-        #         key_x = torch.normal(mean=self.avgs[img_id][0][i], std=self.std_devs[img_id][0][i])
-        #         key_y = torch.normal(mean=self.avgs[img_id][1][i], std=self.std_devs[img_id][1][i])
-
-        #         key_x_1 = torch.ceil(key_x)
-        #         key_x_2 = torch.floor(key_x)
-        #         key_y_1 = torch.ceil(key_y)
-        #         key_y_2 = torch.floor(key_y)
-        #         # 256 * 256
-        #         # 16 * 16 --> s
-
-        #         key_index = []
-        #         key_index[0] = self.grid_dim * key_y_1 + key_x_1 
-        #         key_index[1] = self.grid_dim * key_y_1 + key_x_2 
-        #         key_index[2] = self.grid_dim * key_y_2 + key_x_1 
-        #         key_index[3] = self.grid_dim * key_y_2 + key_x_2 
-
-                
-        #         sampled_keys = torch.stack((k[key_index[0]], k[key_index[1]], k[key_index[2]], k[key_index[3]]) #4 * 256
-        #         sampled_values = torch.stack((v[key_index[0]], v[key_index[1]], v[key_index[2]], v[key_index[3]])) #4 * 256
-        #         att_patch.append(F.softmax(q[j][i] * sampled_keys, dim=1) * sampled_values)
-            
-        #     att.stack(att_patch)
-        #     att_patch = []
-
-        # return torch.stack(att)
-
-        # att = []
 
         for j in img_ids:
             indexes = list
@@ -131,28 +94,11 @@ class GaussianSelfAttention(nn.Module):
             # sampled_keys 4 * 256 * 256
             # 4 --> keys * q
             # q[j] * 
-            att.stack(F.softmax(q[j] * sampled_keys, dim=1) * sampled_values)
+            att.append(F.softmax(q[j] * sampled_keys, dim=1) * sampled_values)
 
 
         return torch.stack(att)
 
-
-
-        """
-        For each query, dot product with one key 
-        """
-
-        if mask is not None:
-            mask = mask[:, None, None, :].float()
-            scores -= 10000.0 * (1.0 - mask)
-        scores = self.drop(F.softmax(scores, dim=-1))
-        # (B, H, S, S) @ (B, H, S, W) -> (B, H, S, W) -trans-> (B, S, H, W)
-        h = (scores @ v).transpose(1, 2).contiguous()
-        # -merge-> (B, S, D)
-        h = merge_last(h, 2)
-        self.scores = scores
-
-        return h
 
 
 
