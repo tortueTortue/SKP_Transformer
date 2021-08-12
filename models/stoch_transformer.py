@@ -43,7 +43,7 @@ class GaussianSelfAttention(nn.Module):
         self.avgs = Parameter(torch.zeros(no_of_imgs, 2, no_of_patches)) # no_of_imgs * 2 (x and y)
         self.std_devs = Parameter(torch.ones(no_of_imgs, 2, no_of_patches))# no_of_imgs * 2 (x and y)
 
-    def forward(self, x, mask, img_ids):
+    def forward(self, x, img_ids, mask):
         """
         x, q(query), k(key), v(value) : (B(batch_size), S(seq_len), D(dim))
         mask : (B(batch_size) x S(seq_len))
@@ -179,8 +179,8 @@ class Block(nn.Module):
         self.norm2 = nn.LayerNorm(dim, eps=1e-6)
         self.drop = nn.Dropout(dropout)
 
-    def forward(self, x, mask):
-        h = self.drop(self.proj(self.attn(self.norm1(x), mask)))
+    def forward(self, x, ids, mask):
+        h = self.drop(self.proj(self.attn(self.norm1(x), ids, mask)))
         x = x + h
         h = self.drop(self.pwff(self.norm2(x)))
         x = x + h
@@ -194,9 +194,9 @@ class Transformer(nn.Module):
         self.blocks = nn.ModuleList([
             Block(dim, num_heads, ff_dim, dropout, no_of_imgs_for_training, no_of_patches) for _ in range(num_layers)])
 
-    def forward(self, x, mask=None):
+    def forward(self, x, ids, mask=None):
         for block in self.blocks:
-            x = block(x, mask)
+            x = block(x, ids, mask)
         return x
 
 
