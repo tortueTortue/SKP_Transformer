@@ -74,7 +74,7 @@ class GaussianSelfAttention(nn.Module):
             key_y_2 = torch.floor(key_y)
 
 
-            key_index = []
+            key_index = [0,0,0,0]
             key_index[0] = self.grid_dim * key_y_1 + key_x_1 
             key_index[1] = self.grid_dim * key_y_1 + key_x_2 
             key_index[2] = self.grid_dim * key_y_2 + key_x_1 
