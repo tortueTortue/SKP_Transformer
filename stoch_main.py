@@ -34,15 +34,17 @@ if __name__ == '__main__':
     """
 
 
-    stochViT = StochViT('B_16_imagenet1k', pretrained=True, num_classes=10) #, patches=4, num_classes=10, dim=64)
+    stochViT = StochViT('B_16_imagenet1k', num_classes=10) #, patches=4, num_classes=10, dim=64)
     print(f"Parameters {count_model_parameters(stochViT, False)}")
     start_time = time.time()
-    save_model(train_model(epochs, stochViT, "stochViT", cifar10_data, batch_size, model_dir), "stochViT", model_dir)
+    save_model(train_model(epochs, stochViT, "stochViT", cifar10_data, batch_size, model_dir, with_indexes=True), "stochViT", model_dir)
     stochViT = load_model(f"E:/Git/SKP_Transformer/models/trained_models/stochViT.pt")
     print(f"Training time for {epochs} epochs : {time.time() - start_time}")
     print_accuracy_per_class(stochViT, classes, batch_size, cifar10_data.test_loader)
     print_accuracy(stochViT, classes, batch_size, cifar10_data.test_loader)
-   
+
+ # TODO Update training configs with and without ids
+ #   
 
 
 

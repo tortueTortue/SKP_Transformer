@@ -38,7 +38,7 @@ def evaluate(model: Module, val_set: DataLoader, epoch: int):
     epoch_acc = torch.stack(batch_accs).mean()
     return {'val_loss': epoch_loss.item(), 'val_acc': epoch_acc.item(), 'epoch' : epoch}
 
-def train(epochs_no: int, model: Module, train_set: DataLoader, val_set: DataLoader, model_dir, logger, lr, with_sam_opt: bool = False):
+def train(epochs_no: int, model: Module, train_set: DataLoader, val_set: DataLoader, model_dir, logger, lr, with_sam_opt: bool = False, with_indexes: bool = False):
     loss = CrossEntropyLoss()
     history = []
 
@@ -53,10 +53,13 @@ def train(epochs_no: int, model: Module, train_set: DataLoader, val_set: DataLoa
         for batch in train_set:
             optimizer.zero_grad()
             inputs, labels, indexes = batch
-            inputs, labels = inputs.cuda(), labels.cuda()
-            curr_loss = loss(model.forward(inputs), labels)
-            # inputs, labels, indexes = inputs.cuda(), labels.cuda(), indexes.cuda()
-            # curr_loss = loss(model.forward(inputs, indexes), labels)
+            if with_indexes:
+                inputs, labels, indexes = inputs.cuda(), labels.cuda(), indexes.cuda()
+                curr_loss = loss(model.forward(inputs, indexes), labels)
+            else:
+                inputs, labels = inputs.cuda(), labels.cuda()
+                curr_loss = loss(model.forward(inputs), labels)
+
             curr_loss.backward()
             if with_sam_opt:
                 optimizer.first_step(zero_grad=True)
@@ -83,7 +86,7 @@ def train(epochs_no: int, model: Module, train_set: DataLoader, val_set: DataLoa
 
     return history
 
-def train_model(epochs_no: int, model_to_train: Module, model_name: str, dataset: Dataset, batch_size: int, model_dir: str):
+def train_model(epochs_no: int, model_to_train: Module, model_name: str, dataset: Dataset, batch_size: int, model_dir: str, with_sam_opt=False, with_indexes=False):
     model_to_train.train()
     device = get_default_device()
     logger = start_training_logging(model_name)
@@ -98,6 +101,6 @@ def train_model(epochs_no: int, model_to_train: Module, model_name: str, dataset
 
     lr = 0.0001
 
-    history = train(epochs_no, model, train_loader, val_loader, model_dir, logger, lr, with_sam_opt=True)
+    history = train(epochs_no, model, train_loader, val_loader, model_dir, logger, lr, with_sam_opt=with_sam_opt, with_indexes=with_indexes)
 
     return model
