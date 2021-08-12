@@ -12,7 +12,7 @@ from training.utils.logger import start_training_logging
 
 from models.stoch_transformer import propagate_attention
 
-from optimizer.sam import SAM
+from optimizer.sam.sam import SAM
 
 from torch.utils.tensorboard import SummaryWriter
 writer = SummaryWriter()
