@@ -168,7 +168,7 @@ class PositionWiseFeedForward(nn.Module):
 
 class Block(nn.Module):
     """Transformer Block"""
-    def __init__(self, dim, num_heads, ff_dim, dropout, no_of_imgs):
+    def __init__(self, dim, num_heads, ff_dim, dropout, no_of_imgs, no_of_patches):
         super().__init__()
         self.attn = GaussianSelfAttention(dim, num_heads, dropout, no_of_imgs)
         self.proj = nn.Linear(dim, dim)
@@ -187,7 +187,7 @@ class Block(nn.Module):
 
 class Transformer(nn.Module):
     """Transformer with Self-Attentive Blocks"""
-    def __init__(self, num_layers, dim, num_heads, ff_dim, dropout, no_of_imgs_for_training = 50000):
+    def __init__(self, num_layers, dim, num_heads, ff_dim, dropout, no_of_imgs_for_training = 50000, no_of_patches = 16 *16):
         super().__init__()
         self.blocks = nn.ModuleList([
             Block(dim, num_heads, ff_dim, dropout, no_of_imgs_for_training) for _ in range(num_layers)])
