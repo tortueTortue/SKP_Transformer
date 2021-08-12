@@ -9,6 +9,8 @@ from torch.nn import functional as F
 
 from models.stoch_transformer import Transformer
 
+def as_tuple(x):
+    return x if isinstance(x, tuple) else (x, x)
 
 class PositionalEmbedding1D(nn.Module):
     """Adds (optionally learned) positional embeddings to the inputs."""
