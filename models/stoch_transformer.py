@@ -61,7 +61,7 @@ class GaussianSelfAttention(nn.Module):
 
         att = []
 
-        for j in img_ids:
+        for j, img_id in enumerate(img_ids):
             indexes = list
         
             # 256
