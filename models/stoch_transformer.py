@@ -7,6 +7,8 @@ from torch import nn
 from torch import Tensor 
 from torch.nn import functional as F
 
+import torch
+
 from torch.nn.parameter import Parameter
 
 import math
@@ -38,8 +40,8 @@ class GaussianSelfAttention(nn.Module):
         self.n_heads = num_heads
         # self.scores = None
         self.grid_dim = np.sqrt(no_of_patches)
-        self.avgs = Parameter(no_of_imgs, 2, no_of_patches) # no_of_imgs * 2 (x and y)
-        self.std_devs = Parameter(no_of_imgs, 2, no_of_patches)# no_of_imgs * 2 (x and y)
+        self.avgs = Parameter(torch.zeros(no_of_imgs, 2, no_of_patches)) # no_of_imgs * 2 (x and y)
+        self.std_devs = Parameter(torch.ones(no_of_imgs, 2, no_of_patches))# no_of_imgs * 2 (x and y)
 
     def forward(self, x, mask, img_ids):
         """
