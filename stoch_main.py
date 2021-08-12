@@ -34,7 +34,7 @@ if __name__ == '__main__':
     """
 
 
-    stochViT = StochViT(num_classes=10) #, patches=4, num_classes=10, dim=64)
+    stochViT = StochViT(num_classes=10, no_of_imgs_for_training=50000) #, patches=4, num_classes=10, dim=64)
     print(f"Parameters {count_model_parameters(stochViT, False)}")
     start_time = time.time()
     save_model(train_model(epochs, stochViT, "stochViT", cifar10_data, batch_size, model_dir, with_indexes=True), "stochViT", model_dir)

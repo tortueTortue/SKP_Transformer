@@ -187,10 +187,10 @@ class Block(nn.Module):
 
 class Transformer(nn.Module):
     """Transformer with Self-Attentive Blocks"""
-    def __init__(self, num_layers, dim, num_heads, ff_dim, dropout):
+    def __init__(self, num_layers, dim, num_heads, ff_dim, dropout, no_of_imgs_for_training = 50000):
         super().__init__()
         self.blocks = nn.ModuleList([
-            Block(dim, num_heads, ff_dim, dropout) for _ in range(num_layers)])
+            Block(dim, num_heads, ff_dim, dropout, no_of_imgs_for_training) for _ in range(num_layers)])
 
     def forward(self, x, mask=None):
         for block in self.blocks:
