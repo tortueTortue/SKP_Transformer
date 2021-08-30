@@ -24,7 +24,7 @@ if __name__ == '__main__':
     model_dir = f"E:/Git/{project_name}/models/trained_models/"
     model_name = ""
     checkpoint_dir = f"E:/Git/{project_name}/training/checkpoints/checkpoint_{model_name}.pt"
-    batch_size = 15
+    batch_size = 1
     epochs = 100
     cifar10_data = Cifar10Dataset(batch_size=batch_size)
     classes = cifar10_data.classes
@@ -34,7 +34,7 @@ if __name__ == '__main__':
     """
 
 
-    stochViT = StochViT(num_classes=10, no_of_imgs_for_training=50000) #, patches=4, num_classes=10, dim=64)
+    stochViT = StochViT(num_classes=10, no_of_imgs_for_training=50000, image_size=256) #, patches=4, num_classes=10, dim=64)
     print(f"Parameters {count_model_parameters(stochViT, False)}")
     start_time = time.time()
     save_model(train_model(epochs, stochViT, "stochViT", cifar10_data, batch_size, model_dir, with_indexes=True), "stochViT", model_dir)

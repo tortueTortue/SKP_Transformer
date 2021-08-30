@@ -13,6 +13,11 @@ from torch.nn.parameter import Parameter
 
 import math
 
+from training.utils.utils import get_default_device, to_device
+
+def to_indices(tensor):
+    return tensor.detach().type(torch.long)
+
 
 def split_last(x, shape):
     "split the last dimension to given shape"
@@ -40,8 +45,8 @@ class GaussianSelfAttention(nn.Module):
         self.n_heads = num_heads
         # self.scores = None
         self.grid_dim = np.sqrt(no_of_patches)
-        self.avgs = Parameter(torch.zeros(no_of_imgs, 2, no_of_patches)) # no_of_imgs * 2 (x and y)
-        self.std_devs = Parameter(torch.ones(no_of_imgs, 2, no_of_patches))# no_of_imgs * 2 (x and y)
+        self.avgs = Parameter(torch.zeros(no_of_imgs, 2, no_of_patches, requires_grad=True)) # no_of_imgs * 2 (x and y)
+        self.std_devs = Parameter(torch.ones(no_of_imgs, 2, no_of_patches, requires_grad=True))# no_of_imgs * 2 (x and y)
 
     def forward(self, x, img_ids, mask):
         """
@@ -75,15 +80,15 @@ class GaussianSelfAttention(nn.Module):
 
 
             key_index = [0,0,0,0]
-            key_index[0] = self.grid_dim * key_y_1 + key_x_1 
-            key_index[1] = self.grid_dim * key_y_1 + key_x_2 
-            key_index[2] = self.grid_dim * key_y_2 + key_x_1 
-            key_index[3] = self.grid_dim * key_y_2 + key_x_2 
+            key_index[0] = to_indices(self.grid_dim * key_y_1 + key_x_1)
+            key_index[1] = to_indices(self.grid_dim * key_y_1 + key_x_2)
+            key_index[2] = to_indices(self.grid_dim * key_y_2 + key_x_1)
+            key_index[3] = to_indices(self.grid_dim * key_y_2 + key_x_2)
 
             #k - b, 256 * 256
 
             # k -> b * 256 * 256 --> k[j] -> 256 * 256, k[j][1] --> 256 
-
+            # TODO : Use sample for class token!!!!
             # Error n2 --> On veut 256 * 4 * 256, donc pour 256 queries, on veut 4 key de dimensions 256
             sampled_keys = torch.stack((k[j][key_index[0]], k[j][key_index[1]], 
                                         k[j][key_index[2]], k[j][key_index[3]])).transpose(dim0=0, dim1=1)#4 * 256 * 256
@@ -94,12 +99,23 @@ class GaussianSelfAttention(nn.Module):
             # sampled_keys 4 * 256 * 256
             # 4 --> keys * q
             # q[j] * 
-            att.append(F.softmax(q[j] * sampled_keys, dim=1) * sampled_values)
+            #a = q[j] * sampled_keys
+            # Lets add ones vector for class embedding
+            ss, s, l = sampled_keys.shape
+            class_emb = to_device(torch.ones(1, s, l), get_default_device())
+            sampled_keys = torch.cat((class_emb, sampled_keys), dim=0)
+            sampled_values = torch.cat((class_emb, sampled_values), dim=0)
+
+            at_sc = torch.matmul(sampled_keys, q[j].unsqueeze(dim=2))
+            full_att = F.softmax(at_sc, dim=1) * sampled_values
+
+            
+            att.append(torch.sum(full_att, dim=1))
 
 
         return torch.stack(att)
 
-
+#TODO : Add test mode without estimation
 
 
 class PositionWiseFeedForward(nn.Module):
@@ -127,6 +143,7 @@ class Block(nn.Module):
 
     def forward(self, x, ids, mask):
         h = self.drop(self.proj(self.attn(self.norm1(x), ids, mask)))
+        print(f"att shape {h.shape} and x shape {x.shape}")
         x = x + h
         h = self.drop(self.pwff(self.norm2(x)))
         x = x + h
@@ -145,8 +162,11 @@ class Transformer(nn.Module):
             x = block(x, ids, mask)
         return x
 
+    def propagate_attention(self, lr, indexes, momentum):
+        for block in self.blocks:
+            # block.attn.avgs[indexes] -= lr * block.attn.avgs[indexes].grad
+            # block.attn.std_devs[indexes] -= lr * block.attn.std_devs[indexes].grad
 
-def propagate_attention(model, lr, indexes, momentum):
-    for block in model.blocks:
-        block.attn.avgs[indexes] -= lr * block.attn.avgs.gradient[indexes]
-        block.attn.std_devs[indexes] -= lr * block.attn.std_devs.gradient[indexes]
+            # or try this
+            block.attn.avgs[indexes].data.sub_(block.attn.avgs[indexes].grad.data * lr)
+            block.attn.std_devs[indexes].data.sub_(block.attn.std_devs[indexes].grad.data * lr)
