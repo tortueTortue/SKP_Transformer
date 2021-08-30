@@ -50,7 +50,7 @@ def train(epochs_no: int, model: Module, train_set: DataLoader, val_set: DataLoa
     for epoch in range(epochs_no):
 
         """  Training Phase """ 
-        for batch in train_set:
+        for batch_index, batch in enumerate(train_set):
             optimizer.zero_grad()
             inputs, labels, indexes = batch
             if with_indexes:
@@ -72,6 +72,7 @@ def train(epochs_no: int, model: Module, train_set: DataLoader, val_set: DataLoa
 
             # TODO: A voir
             propagate_attention(model, lr, indexes, None)
+
 
         """ Validation Phase """
         result = evaluate(model, val_set, epoch)
