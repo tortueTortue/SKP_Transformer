@@ -30,7 +30,7 @@ class PreNorm(nn.Module):
         return self.norm(self.fn(x, **kwargs))
 
 class FeedForward(nn.Module):
-    def __init__(self, dim, hidden_dim, dropout = 0.):
+    def __init__(self, dim, hidden_dim, dropout = 0.5):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(dim, hidden_dim),
@@ -43,7 +43,7 @@ class FeedForward(nn.Module):
         return self.net(x)
 
 class Encoder(nn.Module):
-    def __init__(self, dim, no_of_blocks, mlp_dim, attention, dropout = 0.8, with_avg_pooling=False):
+    def __init__(self, dim, no_of_blocks, mlp_dim, attention, dropout = 0.5, with_avg_pooling=False):
         super().__init__()
         self.layers = nn.ModuleList([])
         for _ in range(no_of_blocks):

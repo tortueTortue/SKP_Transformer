@@ -10,16 +10,20 @@ from training.utils.utils import batches_to_device, get_default_device, to_devic
 from training.metrics.metrics import accuracy
 from training.utils.logger import start_training_logging
 
-from torch.utils.tensorboard import SummaryWriter
-writer = SummaryWriter()
+from models.stoch_transformer import propagate_attention
+
+from optimizer.sam.sam import SAM
+
+# from torch.utils.tensorboard import SummaryWriter
+# writer = SummaryWriter()
 
 # TODO : Add configs for this one
 PATH = ""
 
 def validation_step(model, batch):
-    images, labels, indexes = batch 
-    images, labels, indexes = images.cuda(), labels.cuda(), indexes.cuda()
-    out = model.forward(images, indexes)
+    images, labels, i = batch 
+    images, labels, i = images.cuda(), labels.cuda(), i.cuda()
+    out = model.forward(images, i)
     cross_entropy = CrossEntropyLoss()                  
     val_loss = cross_entropy(out, labels)
 
@@ -34,10 +38,14 @@ def evaluate(model: Module, val_set: DataLoader, epoch: int):
     epoch_acc = torch.stack(batch_accs).mean()
     return {'val_loss': epoch_loss.item(), 'val_acc': epoch_acc.item(), 'epoch' : epoch}
 
-def train(epochs_no: int, model: Module, train_set: DataLoader, val_set: DataLoader, model_dir, logger):
+def train(epochs_no: int, model: Module, train_set: DataLoader, val_set: DataLoader, model_dir, logger, lr, with_sam_opt: bool = False, with_indexes: bool = False):
     loss = CrossEntropyLoss()
     history = []
-    optimizer = SGD(model.parameters(), lr=0.001, momentum=0.9)
+
+    if with_sam_opt:
+        optimizer = SAM(model.parameters(), SGD(), lr=0.0001, momentum=0.9)
+    else:
+        optimizer = SGD(model.parameters(), lr=0.0001, momentum=0.9)
 
     for epoch in range(epochs_no):
 
@@ -45,12 +53,26 @@ def train(epochs_no: int, model: Module, train_set: DataLoader, val_set: DataLoa
         for batch_index, batch in enumerate(train_set):
             optimizer.zero_grad()
             inputs, labels, indexes = batch
-            inputs, labels, indexes = inputs.cuda(), labels.cuda(), indexes.cuda()
-            curr_loss = loss(model.forward(inputs, indexes), labels)
+            if with_indexes:
+                inputs, labels, indexes = inputs.cuda(), labels.cuda(), indexes.cuda()
+                curr_loss = loss(model.forward(inputs, indexes), labels)
+            else:
+                inputs, labels = inputs.cuda(), labels.cuda()
+                curr_loss = loss(model.forward(inputs), labels)
+
             curr_loss.backward()
-            optimizer.step()
-            if batch_index == 2000:
-                print("here")
+            if with_sam_opt:
+                optimizer.first_step(zero_grad=True)
+
+                # Second pass
+                loss(model.forward(inputs), labels)
+                optimizer.second_step(zero_grad=True)
+            else:
+                optimizer.step()
+
+            # TODO: A voir
+            propagate_attention(model, lr, indexes, None)
+
 
         """ Validation Phase """
         result = evaluate(model, val_set, epoch)
@@ -65,7 +87,7 @@ def train(epochs_no: int, model: Module, train_set: DataLoader, val_set: DataLoa
 
     return history
 
-def train_model(epochs_no: int, model_to_train: Module, model_name: str, dataset: Dataset, batch_size: int, model_dir: str):
+def train_model(epochs_no: int, model_to_train: Module, model_name: str, dataset: Dataset, batch_size: int, model_dir: str, with_sam_opt=False, with_indexes=False):
     model_to_train.train()
     device = get_default_device()
     logger = start_training_logging(model_name)
@@ -78,6 +100,8 @@ def train_model(epochs_no: int, model_to_train: Module, model_name: str, dataset
 
     model = to_device(model_to_train, device)
 
-    history = train(epochs_no, model, train_loader, val_loader, model_dir, logger)
+    lr = 0.0001
+
+    history = train(epochs_no, model, train_loader, val_loader, model_dir, logger, lr, with_sam_opt=with_sam_opt, with_indexes=with_indexes)
 
     return model
