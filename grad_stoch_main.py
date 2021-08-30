@@ -34,7 +34,7 @@ if __name__ == '__main__':
     """
 
     # Breakpoint before/after .backward() in training manager to inspect grads in debug mode.
-    gradTestStochViT = StochViT(num_classes=10, no_of_imgs_for_training=50, num_layers=1) #, patches=4, num_classes=10, dim=64)
+    gradTestStochViT = StochViT(num_classes=10, no_of_imgs_for_training=50000, num_layers=1, image_size=256) #, patches=4, num_classes=10, dim=64)
     print(f"Parameters {count_model_parameters(gradTestStochViT, False)}")
     start_time = time.time()
     save_model(train_model(epochs, gradTestStochViT, "gradTestStochViT", cifar10_data, batch_size, model_dir, with_indexes=True), "gradTestStochViT", model_dir)

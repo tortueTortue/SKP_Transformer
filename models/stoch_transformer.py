@@ -48,6 +48,9 @@ class GaussianSelfAttention(nn.Module):
         self.avgs = Parameter(torch.zeros(no_of_imgs, 2, no_of_patches, requires_grad=True)) # no_of_imgs * 2 (x and y)
         self.std_devs = Parameter(torch.ones(no_of_imgs, 2, no_of_patches, requires_grad=True))# no_of_imgs * 2 (x and y)
 
+        self.avgs.retain_grad()
+        self.std_devs.retain_grad()
+
     def forward(self, x, img_ids, mask):
         """
         x, q(query), k(key), v(value) : (B(batch_size), S(seq_len), D(dim))
@@ -164,9 +167,17 @@ class Transformer(nn.Module):
 
     def propagate_attention(self, lr, indexes, momentum):
         for block in self.blocks:
-            # block.attn.avgs[indexes] -= lr * block.attn.avgs[indexes].grad
-            # block.attn.std_devs[indexes] -= lr * block.attn.std_devs[indexes].grad
+            if block.attn.avgs[indexes].grad is None:
+                block.attn.avgs[indexes].retain_grad()
+                block.attn.avgs[indexes].grad = torch.zeros_like(block.attn.avgs[indexes])
+            if block.attn.std_devs[indexes].grad is None:
+                block.attn.std_devs[indexes].retain_grad()
+                block.attn.std_devs[indexes].grad = torch.zeros_like(block.attn.std_devs[indexes])
+
+
+            block.attn.avgs[indexes] -= lr * block.attn.avgs[indexes].grad
+            block.attn.std_devs[indexes] -= lr * block.attn.std_devs[indexes].grad
 
             # or try this
-            block.attn.avgs[indexes].data.sub_(block.attn.avgs[indexes].grad.data * lr)
-            block.attn.std_devs[indexes].data.sub_(block.attn.std_devs[indexes].grad.data * lr)
+            # block.attn.avgs[indexes].data.sub_(block.attn.avgs[indexes].grad.data * lr)
+            # block.attn.std_devs[indexes].data.sub_(block.attn.std_devs[indexes].grad.data * lr)
