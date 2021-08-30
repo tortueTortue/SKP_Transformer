@@ -10,7 +10,7 @@ from training.utils.utils import batches_to_device, get_default_device, to_devic
 from training.metrics.metrics import accuracy
 from training.utils.logger import start_training_logging
 
-from models.stoch_transformer import propagate_attention
+
 
 from optimizer.sam.sam import SAM
 
@@ -65,13 +65,14 @@ def train(epochs_no: int, model: Module, train_set: DataLoader, val_set: DataLoa
                 optimizer.first_step(zero_grad=True)
 
                 # Second pass
-                loss(model.forward(inputs), labels)
+                loss(model.forward(inputs), labels).backward()
                 optimizer.second_step(zero_grad=True)
             else:
                 optimizer.step()
 
             # TODO: A voir
-            propagate_attention(model, lr, indexes, None)
+            if True:
+                model.propagate_attention(lr, indexes, None)
 
 
         """ Validation Phase """

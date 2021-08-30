@@ -120,6 +120,7 @@ class StochViT(nn.Module):
             x (tensor): `b,c,fh,fw`
         """
         b, c, fh, fw = x.shape
+        print(f"x shape b4 patches {x.shape}")
         x = self.patch_embedding(x)  # b,d,gh,gw
         x = x.flatten(2).transpose(1, 2)  # b,gh*gw,d
         if hasattr(self, 'class_token'):
@@ -134,4 +135,7 @@ class StochViT(nn.Module):
             x = self.norm(x)[:, 0]  # b,d
             x = self.fc(x)  # b,num_classes
         return x
+
+    def propagate_attention(self, lr, indexes, momentum):
+        self.transformer.propagate_attention(lr, indexes, momentum)
 

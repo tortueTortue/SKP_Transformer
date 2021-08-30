@@ -43,12 +43,14 @@ class CIFAR10WithIndices(CIFAR10):
 class Cifar10Dataset:
     def __init__(self, batch_size=128): #TODO Add with indexes params and transform
         dataset = CIFAR10WithIndices(root='data/', download=True, transform=transforms.Compose([
-            transforms.Resize((384, 384)),
+            transforms.Resize((256, 256)),
+            # transforms.Resize((384, 384)),
             transforms.ToTensor(),
             transforms.Normalize(0.5, 0.5),
         ]))
         test_dataset = CIFAR10WithIndices(root='data/', train=False, transform=transforms.Compose([
-            transforms.Resize((384, 384)),
+            transforms.Resize((256, 256)),
+            # transforms.Resize((384, 384)),
             transforms.ToTensor(),
             transforms.Normalize(0.5, 0.5),
         ]))
