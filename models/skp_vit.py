@@ -139,3 +139,6 @@ class StochViT(nn.Module):
     def propagate_attention(self, lr, indexes, momentum):
         self.transformer.propagate_attention(lr, indexes, momentum)
 
+    def compute_gradients(self, loss, indexes):
+        self.transformer.compute_gradients(loss, indexes)
+

@@ -55,12 +55,18 @@ def train(epochs_no: int, model: Module, train_set: DataLoader, val_set: DataLoa
             inputs, labels, indexes = batch
             if with_indexes:
                 inputs, labels, indexes = inputs.cuda(), labels.cuda(), indexes.cuda()
-                curr_loss = loss(model.forward(inputs, indexes), labels)
+                # TODO try with this forawrd call
+                curr_loss = loss(model(inputs, indexes), labels) #--> model.forward(inputs, indexes)
             else:
                 inputs, labels = inputs.cuda(), labels.cuda()
-                curr_loss = loss(model.forward(inputs), labels)
+                curr_loss = loss(model(inputs), labels)
 
             curr_loss.backward()
+
+            # TODO ADD PARAM
+            # if True:
+            #     model.compute_gradients(curr_loss, indexes)
+
             if with_sam_opt:
                 optimizer.first_step(zero_grad=True)
 
@@ -69,6 +75,8 @@ def train(epochs_no: int, model: Module, train_set: DataLoader, val_set: DataLoa
                 optimizer.second_step(zero_grad=True)
             else:
                 optimizer.step()
+
+            #TODO Remove self.avgs[img_id][0] and self.std_devs[img_id][1] from GPU
 
             # TODO: A voir
             if True:

@@ -1,5 +1,5 @@
 import torch
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 from torch.utils.data.dataloader import DataLoader
 from torchvision.datasets import CIFAR10
 from torchvision.transforms import ToTensor

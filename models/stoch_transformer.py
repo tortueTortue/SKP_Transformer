@@ -6,6 +6,7 @@ import numpy as np
 from torch import nn
 from torch import Tensor 
 from torch.nn import functional as F
+from torch.autograd import grad
 
 import torch
 
@@ -45,11 +46,12 @@ class GaussianSelfAttention(nn.Module):
         self.n_heads = num_heads
         # self.scores = None
         self.grid_dim = np.sqrt(no_of_patches)
+        # TODO force avgs and std out of gpu
         self.avgs = Parameter(torch.zeros(no_of_imgs, 2, no_of_patches, requires_grad=True)) # no_of_imgs * 2 (x and y)
         self.std_devs = Parameter(torch.ones(no_of_imgs, 2, no_of_patches, requires_grad=True))# no_of_imgs * 2 (x and y)
 
-        self.avgs.retain_grad()
-        self.std_devs.retain_grad()
+        # self.avgs.retain_grad()
+        # self.std_devs.retain_grad()
 
     def forward(self, x, img_ids, mask):
         """
@@ -73,8 +75,9 @@ class GaussianSelfAttention(nn.Module):
             indexes = list
         
             # 256
-            key_x = torch.normal(mean=self.avgs[img_id][0], std=self.std_devs[img_id][0])
-            key_y = torch.normal(mean=self.avgs[img_id][1], std=self.std_devs[img_id][1])
+            #TODO Add self.avgs[img_id][0] and self.std_devs[img_id][1]
+            key_x = (torch.normal(mean=0, std=1) - self.avgs[img_id][0])/ self.std_devs[img_id][0]
+            key_y = (torch.normal(mean=0, std=1) - self.avgs[img_id][1])/ self.std_devs[img_id][1]
 
             key_x_1 = torch.ceil(key_x)
             key_x_2 = torch.floor(key_x)
@@ -165,14 +168,24 @@ class Transformer(nn.Module):
             x = block(x, ids, mask)
         return x
 
+    def compute_gradients(self, loss, indexes):
+        for block in self.blocks:
+            block.attn.avgs[indexes].retain_grad()
+            block.attn.avgs[indexes].retain_graph = True
+            block.attn.avgs[indexes].grad = grad(loss, block.attn.avgs[indexes])
+
+            block.attn.std_devs[indexes].retain_grad()
+            block.attn.std_devs[indexes].retain_graph = True
+            block.attn.std_devs[indexes].grad = grad(loss, block.attn.std_devs[indexes])
+
     def propagate_attention(self, lr, indexes, momentum):
         for block in self.blocks:
-            if block.attn.avgs[indexes].grad is None:
-                block.attn.avgs[indexes].retain_grad()
-                block.attn.avgs[indexes].grad = torch.zeros_like(block.attn.avgs[indexes])
-            if block.attn.std_devs[indexes].grad is None:
-                block.attn.std_devs[indexes].retain_grad()
-                block.attn.std_devs[indexes].grad = torch.zeros_like(block.attn.std_devs[indexes])
+            # if block.attn.avgs[indexes].grad is None:
+            #     block.attn.avgs[indexes].retain_grad()
+            #     block.attn.avgs[indexes].grad = torch.zeros_like(block.attn.avgs[indexes])
+            # if block.attn.std_devs[indexes].grad is None:
+            #     block.attn.std_devs[indexes].retain_grad()
+            #     block.attn.std_devs[indexes].grad = torch.zeros_like(block.attn.std_devs[indexes])
 
 
             block.attn.avgs[indexes] -= lr * block.attn.avgs[indexes].grad
