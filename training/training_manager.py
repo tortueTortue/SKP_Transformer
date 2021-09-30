@@ -55,7 +55,7 @@ def train(epochs_no: int, model: Module, train_set: DataLoader, val_set: DataLoa
             inputs, labels, indexes = batch
             if with_indexes:
                 inputs, labels, indexes = inputs.cuda(), labels.cuda(), indexes.cuda()
-                # TODO try with this forawrd call
+                # TODO try with this forward call
                 curr_loss = loss(model(inputs, indexes), labels) #--> model.forward(inputs, indexes)
             else:
                 inputs, labels = inputs.cuda(), labels.cuda()
@@ -107,7 +107,9 @@ def train_model(epochs_no: int, model_to_train: Module, model_name: str, dataset
     batches_to_device(val_loader, device)
     batches_to_device(test_loader, device)
 
-    model = to_device(model_to_train, device)
+    model = to_device(model_to_train, device) # TODO Add except param avg std
+
+    
 
     lr = 0.0001
 

@@ -71,13 +71,19 @@ class GaussianSelfAttention(nn.Module):
 
         att = []
 
+        # Load on GPU
+        avgs = self.avgs[img_ids].cuda()
+        std_devs = self.std_devs[img_ids].cuda()
+
         for j, img_id in enumerate(img_ids):
             indexes = list
         
             # 256
             #TODO Add self.avgs[img_id][0] and self.std_devs[img_id][1]
-            key_x = (torch.normal(mean=0, std=1) - self.avgs[img_id][0])/ self.std_devs[img_id][0]
-            key_y = (torch.normal(mean=0, std=1) - self.avgs[img_id][1])/ self.std_devs[img_id][1]
+            
+   
+            key_x = (torch.normal(mean=0, std=1) - avgs[img_id][0])/ std_devs[img_id][0]
+            key_y = (torch.normal(mean=0, std=1) - avgs[img_id][1])/ std_devs[img_id][1]
 
             key_x_1 = torch.ceil(key_x)
             key_x_2 = torch.floor(key_x)
@@ -118,6 +124,8 @@ class GaussianSelfAttention(nn.Module):
             
             att.append(torch.sum(full_att, dim=1))
 
+        self.avgs[img_ids] = avgs.cpu().data.numpy()
+        self.std_devs[img_ids] = std_devs.cpu().data.numpy()
 
         return torch.stack(att)
 

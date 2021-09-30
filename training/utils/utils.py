@@ -11,6 +11,11 @@ def to_device(data, device):
     return [to_device(x, device) for x in data] if isinstance(data, (list,tuple)) \
       else data.to(device, non_blocking=True)
 
+# TODO
+def to_device_except(data, device, modules: []):
+    return [to_device(x, device) for x in data] if isinstance(data, (list,tuple)) \
+      else data.to(device, non_blocking=True)
+
 def batches_to_device(data_loader, device):
     for batch in data_loader:
         yield to_device(batch, device)
