@@ -9,6 +9,8 @@ from torch.nn import functional as F
 
 from models.stoch_transformer import Transformer
 
+from training.utils.utils import get_default_device, to_device
+
 def as_tuple(x):
     return x if isinstance(x, tuple) else (x, x)
 
@@ -72,7 +74,7 @@ class StochViT(nn.Module):
 
         # Class token
         if classifier == 'token':
-            self.class_token = nn.Parameter(torch.zeros(1, 1, dim))
+            self.class_token = nn.Parameter(torch.zeros(1, 1, dim, device='cuda'))
             seq_len += 1
         
         # Positional embedding
@@ -124,6 +126,7 @@ class StochViT(nn.Module):
         x = self.patch_embedding(x)  # b,d,gh,gw
         x = x.flatten(2).transpose(1, 2)  # b,gh*gw,d
         if hasattr(self, 'class_token'):
+            print(f"class tok {self.class_token.is_cuda}")
             x = torch.cat((self.class_token.expand(b, -1, -1), x), dim=1)  # b,gh*gw+1,d
         if hasattr(self, 'positional_embedding'): 
             x = self.positional_embedding(x)  # b,gh*gw+1,d 
@@ -142,3 +145,32 @@ class StochViT(nn.Module):
     def compute_gradients(self, loss, indexes):
         self.transformer.compute_gradients(loss, indexes)
 
+    # TODO : Reimplement this, VERY BAD PRACTICE
+    def load_on_gpu(self):
+        device = get_default_device()
+        
+        print(f"Loading SKP_VIT onto the GPU : {device.type}")
+
+        to_device(self.patch_embedding, device) 
+        to_device(self.class_token, device) #TODO For soe reason class token ot put on cuda
+        print(f"loading class tok {self.class_token.is_cuda}")
+        to_device(self.positional_embedding, device) # TODO Try with non-blcoking set to false
+        self.class_token.to()
+        if hasattr(self, 'pre_logits'):
+            to_device(self.pre_logits, device)
+        to_device(self.norm, device)
+        to_device(self.fc, device)
+
+
+        for block in self.transformer.blocks:
+            to_device(block.drop, device)
+            to_device(block.proj, device)
+            to_device(block.norm1, device)
+            to_device(block.drop, device)
+            to_device(block.pwff, device)
+            to_device(block.norm2, device)
+
+            to_device(block.attn.proj_q, device)
+            to_device(block.attn.proj_k, device)
+            to_device(block.attn.proj_v, device)
+            to_device(block.attn.drop, device)

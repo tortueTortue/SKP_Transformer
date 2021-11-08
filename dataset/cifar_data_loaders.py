@@ -28,7 +28,7 @@ from typing import Any, Callable, Optional, Tuple
 
 class CIFAR10WithIndices(CIFAR10):
 
-    def __getitem__(self, index: int) -> Tuple[Any, Any]:
+    def __getitem__(self, index: int) -> Tuple[Any, Any, Any]:
         """
         Args:
             index (int): Index

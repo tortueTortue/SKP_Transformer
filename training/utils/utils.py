@@ -3,7 +3,7 @@ from torch.nn.modules.loss import _Loss
 from torch.optim import SGD
 from torch.nn import Module
 
-def get_default_device():
+def get_default_device() -> torch.device:
     return torch.device('cuda') if torch.cuda.is_available() \
       else torch.device('cpu')
 

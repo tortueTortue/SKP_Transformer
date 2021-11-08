@@ -1,6 +1,8 @@
 """
 Here are the training methods.
 """
+from models.skp_vit import StochViT
+from models.skp_Transformer import SKP_Transformer
 from torch.utils.data import Dataset, DataLoader
 from torch.nn import Module, CrossEntropyLoss
 from torch.optim import SGD
@@ -20,17 +22,21 @@ from optimizer.sam.sam import SAM
 # TODO : Add configs for this one
 PATH = ""
 
-def validation_step(model, batch):
-    images, labels, i = batch 
-    images, labels, i = images.cuda(), labels.cuda(), i.cuda()
-    out = model.forward(images, i)
+def validation_step(model, batch, with_indexes: bool = False):
+    images, labels, i = batch
+    if with_indexes:
+        images, labels, i = images.cuda(), labels.cuda(), i.cuda()
+        out = model.forward(images, i)
+    else :
+        images, labels = images.cuda(), labels.cuda()
+        out = model.forward(images)
     cross_entropy = CrossEntropyLoss()                  
     val_loss = cross_entropy(out, labels)
 
     return {'val_loss': val_loss.detach(), 'val_acc': accuracy(out, labels)}
 
-def evaluate(model: Module, val_set: DataLoader, epoch: int):
-    outputs = [validation_step(model, batch) for batch in val_set]
+def evaluate(model: Module, val_set: DataLoader, epoch: int, with_indexes: bool = False):
+    outputs = [validation_step(model, batch, with_indexes) for batch in val_set]
 
     batch_losses = [x['val_loss'] for x in outputs]
     epoch_loss = torch.stack(batch_losses).mean()
@@ -79,20 +85,20 @@ def train(epochs_no: int, model: Module, train_set: DataLoader, val_set: DataLoa
             #TODO Remove self.avgs[img_id][0] and self.std_devs[img_id][1] from GPU
 
             # TODO: A voir
-            if True:
+            if  with_indexes:
                 model.propagate_attention(lr, indexes, None)
 
 
         """ Validation Phase """
-        result = evaluate(model, val_set, epoch)
+        result = evaluate(model, val_set, epoch, with_indexes)
         print(result)
         history.append(result)
-        writer.add_scalar("Loss/val", result['val_loss'], epoch)
-        writer.add_scalar("Accuracy/val", result['val_acc'], epoch)
+        #writer.add_scalar("Loss/val", result['val_loss'], epoch)
+        #writer.add_scalar("Accuracy/val", result['val_acc'], epoch)
         logger.info(str(result))
         if epoch % 10 == 0 :
             save_checkpoints(epoch, model, optimizer, loss, model_dir + f"checkpoint_{epoch}_{type(model).__name__}.pt")
-    writer.flush()
+    #writer.flush()
 
     return history
 
@@ -107,7 +113,13 @@ def train_model(epochs_no: int, model_to_train: Module, model_name: str, dataset
     batches_to_device(val_loader, device)
     batches_to_device(test_loader, device)
 
-    model = to_device(model_to_train, device) # TODO Add except param avg std
+    # TODO CLEAN UP THIS< VERY BAD PRACTICE
+    if isinstance(model_to_train, StochViT):
+        print("Loading ViT")
+        model_to_train.load_on_gpu()
+        model = model_to_train
+    else:
+        model = to_device(model_to_train, device) # TODO Add except param avg std
 
     
 

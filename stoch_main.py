@@ -21,9 +21,11 @@ from pytorch_pretrained_vit import ViT
 if __name__ == '__main__':
     # TODO Add as config
     project_name = "SKP_Transformer"
-    model_dir = f"E:/Git/{project_name}/models/trained_models/"
+    model_dir = f"/home/tortue/projects/def-mpederso/tortue/beluga/{project_name}/models/trained_models/"
+    # model_dir = f"E:/Git/{project_name}/models/trained_models/"
     model_name = ""
-    checkpoint_dir = f"E:/Git/{project_name}/training/checkpoints/checkpoint_{model_name}.pt"
+    checkpoint_dir = f"/home/tortue/projects/def-mpederso/tortue/beluga/{project_name}/training/checkpoints/checkpoint_{model_name}.pt"
+    # checkpoint_dir = f"E:/Git/{project_name}/training/checkpoints/checkpoint_{model_name}.pt"
     batch_size = 1
     epochs = 100
     cifar10_data = Cifar10Dataset(batch_size=batch_size)
