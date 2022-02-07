@@ -89,6 +89,7 @@ def train(epochs_no: int, model: Module, train_set: DataLoader, val_set: DataLoa
                 model.propagate_attention(lr, indexes, None)
 
 
+
         """ Validation Phase """
         result = evaluate(model, val_set, epoch, with_indexes)
         print(result)

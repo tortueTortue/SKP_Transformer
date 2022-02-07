@@ -3,7 +3,8 @@ from torch.nn.parameter import Parameter
 from torch.nn import Module, CrossEntropyLoss
 
 
-class Block(nn.Module):
+class Block(Module):
+    
     def __init__(self):
         super().__init__()
         self.a = Parameter(torch.ones(10, requires_grad=True))
