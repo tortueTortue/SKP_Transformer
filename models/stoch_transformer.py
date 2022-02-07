@@ -19,6 +19,11 @@ from training.utils.utils import get_default_device, to_device
 def to_indices(tensor):
     return tensor.detach().type(torch.long)
 
+def bilinear(p, s):
+    """
+        (1 - abs(Pn_x - Sample_x)) * (1 - abs(Pn_y - Sample_y))
+    """
+    return (1 - abs(p[0] - s[0])) * (1 - abs(p[1] - s[1])).squeeze(0)
 
 def split_last(x, shape):
     "split the last dimension to given shape"
@@ -54,7 +59,7 @@ class GaussianSelfAttention(nn.Module):
         # self.avgs.retain_grad()
         # self.std_devs.retain_grad()
 
-    def forward(self, x, img_ids, mask):
+    def forward2(self, x, img_ids, mask):
         """
         x, q(query), k(key), v(value) : (B(batch_size), S(seq_len), D(dim))
         mask : (B(batch_size) x S(seq_len))
@@ -169,41 +174,24 @@ class GaussianSelfAttention(nn.Module):
 
         # (B, S, D) -proj-> (B, S, D) -split-> (B, S, H, W) -trans-> (B, H, S, W)
         q, k, v = self.proj_q(x), self.proj_k(x), self.proj_v(x)
-        # q, k, v = (split_last(x, (self.n_heads, -1)).transpose(1, 2) for x in [q, k, v])
 
         att = []
 
-        
-        print("self.avgs is on " + "cuda" if self.avgs.is_cuda else "cpu")
 
         # Load on GPU
         self.cuda_avgs = Parameter(self.avgs[img_ids].cuda(), requires_grad=True)
         self.cuda_std_devs = Parameter(self.std_devs[img_ids].cuda(), requires_grad=True)
-        # self.cuda_avgs.requires_grad_(True)
-        # self.cuda_std_devs.requires_grad_(True)
-        # avgs = self.avgs[img_ids].cuda()
-        # std_devs = self.std_devs[img_ids].cuda()
 
         for j, img_id in enumerate(img_ids):
-            indexes = list
-        
-            # 256
-            #TODO Add self.avgs[img_id][0] and self.std_devs[img_id][1]
-            
-            print(f"no of patches {self.no_of_patches} no of imgs {self.no_of_imgs} id of curr img {img_id}")
             norm_x = torch.normal(mean=torch.zeros(1, self.no_of_patches, requires_grad=True), std=torch.ones(1, self.no_of_patches, requires_grad=True)).cuda()
             norm_y = torch.normal(mean=torch.zeros(1, self.no_of_patches, requires_grad=True), std=torch.ones(1, self.no_of_patches, requires_grad=True)).cuda()
             key_x = (norm_x - self.cuda_avgs[j][0])/ self.cuda_std_devs[j][0]
             key_y = (norm_y - self.cuda_avgs[j][1])/ self.cuda_std_devs[j][1]
-            # key_x = (torch.normal(mean=torch.zeros(self.no_of_imgs, self.no_of_patches, requires_grad=True), std=torch.ones(self.no_of_imgs, self.no_of_patches, requires_grad=True)) - avgs[img_id][0])/ std_devs[img_id][0]
-            # key_y = (torch.normal(mean=torch.zeros(self.no_of_imgs, self.no_of_patches, requires_grad=True), std=torch.ones(self.no_of_imgs, self.no_of_patches, requires_grad=True)) - avgs[img_id][1])/ std_devs[img_id][1]
 
             key_x_1 = torch.ceil(key_x)
             key_x_2 = torch.floor(key_x)
             key_y_1 = torch.ceil(key_y)
             key_y_2 = torch.floor(key_y)
-
-
 
 
             key_index = [0,0,0,0]
@@ -212,15 +200,18 @@ class GaussianSelfAttention(nn.Module):
             key_index[2] = to_indices(self.grid_dim * key_y_2 + key_x_1)
             key_index[3] = to_indices(self.grid_dim * key_y_2 + key_x_2)
 
-            #k - b, 256 * 256
+            # SAMPLED KEY = E{ (1 - abs(Pn_x - Sample_x)) * (1 - abs(Pn_y - Sample_y)) * Kn
+            sample = (key_x, key_y)
+            sampled_key = (bilinear((key_x_1 , key_y_1), sample) * k[j][key_index[0]].transpose(dim0=1, dim1=2) + \
+                           bilinear((key_x_2 , key_y_1), sample) * k[j][key_index[1]].transpose(dim0=1, dim1=2) + \
+                           bilinear((key_x_1 , key_y_2), sample) * k[j][key_index[2]].transpose(dim0=1, dim1=2) + \
+                           bilinear((key_x_2 , key_y_2), sample) * k[j][key_index[3]].transpose(dim0=1, dim1=2)).transpose(dim0=1, dim1=2)
 
-            # k -> b * 256 * 256 --> k[j] -> 256 * 256, k[j][1] --> 256 
-            # TODO : Use sample for class token!!!!
-            # Error n2 --> On veut 256 * 4 * 256, donc pour 256 queries, on veut 4 key de dimensions 256
-            sampled_keys = torch.stack((k[j][key_index[0]], k[j][key_index[1]], 
-                                        k[j][key_index[2]], k[j][key_index[3]])).transpose(dim0=0, dim1=1)#4 * 256 * 256
-            sampled_values = torch.stack((v[j][key_index[0]], v[j][key_index[1]], 
-                                          v[j][key_index[2]], v[j][key_index[3]])).transpose(dim0=0, dim1=1)#4 * 256 * 256
+            sampled_value = (bilinear((key_x_1 , key_y_1), sample) * v[j][key_index[0]].transpose(dim0=1, dim1=2) + \
+                             bilinear((key_x_2 , key_y_1), sample) * v[j][key_index[1]].transpose(dim0=1, dim1=2) + \
+                             bilinear((key_x_1 , key_y_2), sample) * v[j][key_index[2]].transpose(dim0=1, dim1=2) + \
+                             bilinear((key_x_2 , key_y_2), sample) * v[j][key_index[3]].transpose(dim0=1, dim1=2)).transpose(dim0=1, dim1=2)
+            
 
             # q -> b * 256 *256 ---> q[j] -> 256*256
             # sampled_keys 4 * 256 * 256
@@ -228,30 +219,15 @@ class GaussianSelfAttention(nn.Module):
             # q[j] * 
             #a = q[j] * sampled_keys
             # Lets add ones vector for class embedding
-            print(f"sampled keys dim {sampled_keys.shape}")
-            ss, n_s, n_p, p_l = sampled_keys.shape
-            class_emb = to_device(torch.ones(1, n_s, 1, p_l), get_default_device())
-            print(f"sampled keys dim {sampled_keys.shape} claas emb shpa {class_emb.shape}")
-            sampled_keys = torch.cat((class_emb, sampled_keys), dim=2)
-            print(f"sampled keys dim {sampled_keys.shape}")
-            print(f"sampled vals dim {sampled_values.shape}")
-            sampled_values = torch.cat((class_emb, sampled_values), dim=2)
+            _, _, k_dim = sampled_key.shape
+            class_emb = to_device(torch.ones(1, 1, k_dim), get_default_device())
+            sampled_key = torch.cat((class_emb, sampled_key), dim=1)
+            sampled_value = torch.cat((class_emb, sampled_value), dim=1)
 
-            print(f"size q {q[j].unsqueeze(dim=2).shape}")
-
-            at_sc = torch.matmul(sampled_keys.squeeze().transpose(dim0=0, dim1=1), q[j].unsqueeze(dim=2))
-            print(f"att score shape {at_sc.shape}")
-            print(f"sampled_values shape {sampled_values.shape}")
-            print(f"Po shape {F.softmax(at_sc, dim=1).transpose(dim0=0, dim1=1).shape}")
-            print(f"s_v shape {sampled_values.squeeze(dim=0).shape}")
-            full_att = F.softmax(at_sc, dim=1).transpose(dim0=0, dim1=1) * sampled_values.squeeze(dim=0)
-
+            at_sc = torch.matmul(sampled_key.transpose(dim0=0, dim1=1), q[j].unsqueeze(dim=2))
+            full_att = F.softmax(at_sc, dim=1).transpose(dim0=0, dim1=1) * sampled_value.squeeze(dim=0)
             
             att.append(torch.sum(full_att, dim=0)) 
-
-        print(f"{self.avgs[img_ids]}")
-
-
 
 
         return torch.stack(att)
