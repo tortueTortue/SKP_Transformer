@@ -51,114 +51,10 @@ class GaussianSelfAttention(nn.Module):
         self.n_heads = num_heads
         self.no_of_imgs = no_of_imgs
         self.no_of_patches = no_of_patches
-        # self.scores = None
         self.grid_dim = np.sqrt(no_of_patches)
-        # TODO force avgs and std out of gpu
         self.avgs = Parameter(torch.zeros(no_of_imgs, 2, no_of_patches, requires_grad=True)) # no_of_imgs * 2 (x and y)
         self.std_devs = Parameter(torch.ones(no_of_imgs, 2, no_of_patches, requires_grad=True))# no_of_imgs * 2 (x and y)
-        # self.avgs.retain_grad()
-        # self.std_devs.retain_grad()
 
-    def forward2(self, x, img_ids, mask):
-        """
-        x, q(query), k(key), v(value) : (B(batch_size), S(seq_len), D(dim))
-        mask : (B(batch_size) x S(seq_len))
-        * split D(dim) into (H(n_heads), W(width of head)) ; D = H * W
-        """
-        #Algo
-        """
-        1. Find patch index in x and y of the key we want for each query using normal dis
-
-        """
-
-        # (B, S, D) -proj-> (B, S, D) -split-> (B, S, H, W) -trans-> (B, H, S, W)
-        q, k, v = self.proj_q(x), self.proj_k(x), self.proj_v(x)
-        # q, k, v = (split_last(x, (self.n_heads, -1)).transpose(1, 2) for x in [q, k, v])
-
-        att = []
-
-        
-        print("self.avgs is on " + "cuda" if self.avgs.is_cuda else "cpu")
-
-        # Load on GPU
-        self.cuda_avgs = Parameter(self.avgs[img_ids].cuda(), requires_grad=True)
-        self.cuda_std_devs = Parameter(self.std_devs[img_ids].cuda(), requires_grad=True)
-        # self.cuda_avgs.requires_grad_(True)
-        # self.cuda_std_devs.requires_grad_(True)
-        # avgs = self.avgs[img_ids].cuda()
-        # std_devs = self.std_devs[img_ids].cuda()
-
-        for j, img_id in enumerate(img_ids):
-            indexes = list
-        
-            # 256
-            #TODO Add self.avgs[img_id][0] and self.std_devs[img_id][1]
-            
-            print(f"no of patches {self.no_of_patches} no of imgs {self.no_of_imgs} id of curr img {img_id}")
-            norm_x = torch.normal(mean=torch.zeros(1, self.no_of_patches, requires_grad=True), std=torch.ones(1, self.no_of_patches, requires_grad=True)).cuda()
-            norm_y = torch.normal(mean=torch.zeros(1, self.no_of_patches, requires_grad=True), std=torch.ones(1, self.no_of_patches, requires_grad=True)).cuda()
-            key_x = (norm_x - self.cuda_avgs[j][0])/ self.cuda_std_devs[j][0]
-            key_y = (norm_y - self.cuda_avgs[j][1])/ self.cuda_std_devs[j][1]
-            # key_x = (torch.normal(mean=torch.zeros(self.no_of_imgs, self.no_of_patches, requires_grad=True), std=torch.ones(self.no_of_imgs, self.no_of_patches, requires_grad=True)) - avgs[img_id][0])/ std_devs[img_id][0]
-            # key_y = (torch.normal(mean=torch.zeros(self.no_of_imgs, self.no_of_patches, requires_grad=True), std=torch.ones(self.no_of_imgs, self.no_of_patches, requires_grad=True)) - avgs[img_id][1])/ std_devs[img_id][1]
-
-            key_x_1 = torch.ceil(key_x)
-            key_x_2 = torch.floor(key_x)
-            key_y_1 = torch.ceil(key_y)
-            key_y_2 = torch.floor(key_y)
-
-            
-
-
-            key_index = [0,0,0,0]
-            key_index[0] = to_indices(self.grid_dim * key_y_1 + key_x_1)
-            key_index[1] = to_indices(self.grid_dim * key_y_1 + key_x_2)
-            key_index[2] = to_indices(self.grid_dim * key_y_2 + key_x_1)
-            key_index[3] = to_indices(self.grid_dim * key_y_2 + key_x_2)
-
-            #k - b, 256 * 256
-
-            # k -> b * 256 * 256 --> k[j] -> 256 * 256, k[j][1] --> 256 
-            # TODO : Use sample for class token!!!!
-            # Error n2 --> On veut 256 * 4 * 256, donc pour 256 queries, on veut 4 key de dimensions 256
-            sampled_keys = torch.stack((k[j][key_index[0]], k[j][key_index[1]], 
-                                        k[j][key_index[2]], k[j][key_index[3]])).transpose(dim0=0, dim1=1)#4 * 256 * 256
-            sampled_values = torch.stack((v[j][key_index[0]], v[j][key_index[1]], 
-                                          v[j][key_index[2]], v[j][key_index[3]])).transpose(dim0=0, dim1=1)#4 * 256 * 256
-
-            # q -> b * 256 *256 ---> q[j] -> 256*256
-            # sampled_keys 4 * 256 * 256
-            # 4 --> keys * q
-            # q[j] * 
-            #a = q[j] * sampled_keys
-            # Lets add ones vector for class embedding
-            print(f"sampled keys dim {sampled_keys.shape}")
-            ss, n_s, n_p, p_l = sampled_keys.shape
-            class_emb = to_device(torch.ones(1, n_s, 1, p_l), get_default_device())
-            print(f"sampled keys dim {sampled_keys.shape} claas emb shpa {class_emb.shape}")
-            sampled_keys = torch.cat((class_emb, sampled_keys), dim=2)
-            print(f"sampled keys dim {sampled_keys.shape}")
-            print(f"sampled vals dim {sampled_values.shape}")
-            sampled_values = torch.cat((class_emb, sampled_values), dim=2)
-
-            print(f"size q {q[j].unsqueeze(dim=2).shape}")
-
-            at_sc = torch.matmul(sampled_keys.squeeze().transpose(dim0=0, dim1=1), q[j].unsqueeze(dim=2))
-            print(f"att score shape {at_sc.shape}")
-            print(f"sampled_values shape {sampled_values.shape}")
-            print(f"Po shape {F.softmax(at_sc, dim=1).transpose(dim0=0, dim1=1).shape}")
-            print(f"s_v shape {sampled_values.squeeze(dim=0).shape}")
-            full_att = F.softmax(at_sc, dim=1).transpose(dim0=0, dim1=1) * sampled_values.squeeze(dim=0)
-
-            
-            att.append(torch.sum(full_att, dim=0)) 
-
-        print(f"{self.avgs[img_ids]}")
-
-
-
-
-        return torch.stack(att)
 
     def forward(self, x, img_ids, mask):
         """
@@ -171,12 +67,9 @@ class GaussianSelfAttention(nn.Module):
         1. Find patch index in x and y of the key we want for each query using normal dis
 
         """
-
         # (B, S, D) -proj-> (B, S, D) -split-> (B, S, H, W) -trans-> (B, H, S, W)
         q, k, v = self.proj_q(x), self.proj_k(x), self.proj_v(x)
-
         att = []
-
 
         # Load on GPU
         self.cuda_avgs = Parameter(self.avgs[img_ids].cuda(), requires_grad=True)
@@ -200,6 +93,8 @@ class GaussianSelfAttention(nn.Module):
             key_index[2] = to_indices(self.grid_dim * key_y_2 + key_x_1)
             key_index[3] = to_indices(self.grid_dim * key_y_2 + key_x_2)
 
+
+            # TODO Refactor this : compute once bilinear for both values and keys, muultiply key and val once
             # SAMPLED KEY = E{ (1 - abs(Pn_x - Sample_x)) * (1 - abs(Pn_y - Sample_y)) * Kn
             sample = (key_x, key_y)
             sampled_key = (bilinear((key_x_1 , key_y_1), sample) * k[j][key_index[0]].transpose(dim0=1, dim1=2) + \
@@ -213,11 +108,6 @@ class GaussianSelfAttention(nn.Module):
                              bilinear((key_x_2 , key_y_2), sample) * v[j][key_index[3]].transpose(dim0=1, dim1=2)).transpose(dim0=1, dim1=2)
             
 
-            # q -> b * 256 *256 ---> q[j] -> 256*256
-            # sampled_keys 4 * 256 * 256
-            # 4 --> keys * q
-            # q[j] * 
-            #a = q[j] * sampled_keys
             # Lets add ones vector for class embedding
             _, _, k_dim = sampled_key.shape
             class_emb = to_device(torch.ones(1, 1, k_dim), get_default_device())
@@ -260,7 +150,6 @@ class Block(nn.Module):
 
     def forward(self, x, ids, mask):
         h = self.drop(self.proj(self.attn(self.norm1(x), ids, mask)))
-        print(f"att shape {h.shape} and x shape {x.shape}")
         x = x + h
         h = self.drop(self.pwff(self.norm2(x)))
         x = x + h
@@ -291,23 +180,9 @@ class Transformer(nn.Module):
 
     def propagate_attention(self, lr, indexes, momentum):
         for block in self.blocks:
-            # if block.attn.avgs[indexes].grad is None:
-            #     block.attn.avgs[indexes].retain_grad()
-            #     block.attn.avgs[indexes].grad = torch.zeros_like(block.attn.avgs[indexes])
-            # if block.attn.std_devs[indexes].grad is None:
-            #     block.attn.std_devs[indexes].retain_grad()
-            #     block.attn.std_devs[indexes].grad = torch.zeros_like(block.attn.std_devs[indexes])
-
-
-            block.attn.cuda_avgs -= lr * block.attn.cuda_avgs.grad
-            block.attn.cuda_std_devs -= lr * block.attn.cuda_std_devs.grad
 
             with torch.no_grad():
-                self.avgs[indexes] = self.cuda_avgs.cpu()
-                self.std_devs[indexes] = self.cuda_std_devs.cpu()
-
-            # TODO If self.cuda_ breaks mem, set to 0
-
-            # or try this
-            # block.attn.avgs[indexes].data.sub_(block.attn.avgs[indexes].grad.data * lr)
-            # block.attn.std_devs[indexes].data.sub_(block.attn.std_devs[indexes].grad.data * lr)
+                block.attn.cuda_avgs -= lr * block.attn.cuda_avgs.grad
+                block.attn.cuda_std_devs -= lr * block.attn.cuda_std_devs.grad
+                block.attn.avgs[indexes] = block.attn.cuda_avgs.cpu()
+                block.attn.std_devs[indexes] = block.attn.cuda_std_devs.cpu()

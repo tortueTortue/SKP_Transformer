@@ -122,11 +122,9 @@ class StochViT(nn.Module):
             x (tensor): `b,c,fh,fw`
         """
         b, c, fh, fw = x.shape
-        print(f"x shape b4 patches {x.shape}")
         x = self.patch_embedding(x)  # b,d,gh,gw
         x = x.flatten(2).transpose(1, 2)  # b,gh*gw,d
         if hasattr(self, 'class_token'):
-            print(f"class tok {self.class_token.is_cuda}")
             x = torch.cat((self.class_token.expand(b, -1, -1), x), dim=1)  # b,gh*gw+1,d
         if hasattr(self, 'positional_embedding'): 
             x = self.positional_embedding(x)  # b,gh*gw+1,d 
@@ -149,11 +147,9 @@ class StochViT(nn.Module):
     def load_on_gpu(self):
         device = get_default_device()
         
-        print(f"Loading SKP_VIT onto the GPU : {device.type}")
 
         to_device(self.patch_embedding, device) 
         to_device(self.class_token, device) #TODO For soe reason class token ot put on cuda
-        print(f"loading class tok {self.class_token.is_cuda}")
         to_device(self.positional_embedding, device) # TODO Try with non-blcoking set to false
         self.class_token.to()
         if hasattr(self, 'pre_logits'):
