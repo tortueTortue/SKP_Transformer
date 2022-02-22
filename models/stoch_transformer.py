@@ -78,8 +78,9 @@ class GaussianSelfAttention(nn.Module):
         for j, img_id in enumerate(img_ids):
             norm_x = torch.normal(mean=torch.zeros(1, self.no_of_patches, requires_grad=True), std=torch.ones(1, self.no_of_patches, requires_grad=True)).cuda()
             norm_y = torch.normal(mean=torch.zeros(1, self.no_of_patches, requires_grad=True), std=torch.ones(1, self.no_of_patches, requires_grad=True)).cuda()
-            key_x = (norm_x - self.cuda_avgs[j][0])/ self.cuda_std_devs[j][0]
-            key_y = (norm_y - self.cuda_avgs[j][1])/ self.cuda_std_devs[j][1]
+
+            key_x = (self.grid_dim/2)*(torch.ones(self.no_of_patches).cuda() + torch.tanh((norm_x + self.cuda_avgs[j][0]) * self.cuda_std_devs[j][0]))
+            key_y = (self.grid_dim/2)*(torch.ones(self.no_of_patches).cuda() + torch.tanh((norm_y + self.cuda_avgs[j][1]) * self.cuda_std_devs[j][1]))
 
             key_x_1 = torch.ceil(key_x)
             key_x_2 = torch.floor(key_x)
@@ -118,7 +119,6 @@ class GaussianSelfAttention(nn.Module):
             full_att = F.softmax(at_sc, dim=1).transpose(dim0=0, dim1=1) * sampled_value.squeeze(dim=0)
             
             att.append(torch.sum(full_att, dim=0)) 
-
 
         return torch.stack(att)
 
