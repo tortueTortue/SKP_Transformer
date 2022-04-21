@@ -60,7 +60,7 @@ class GaussianSelfAttention(nn.Module):
         self.temperature_att_sc = 8
 
 
-    def forward(self, x, img_ids, mask):
+    def forward2(self, x, img_ids, mask):
         """
         x, q(query), k(key), v(value) : (B(batch_size), S(seq_len), D(dim))
         mask : (B(batch_size) x S(seq_len))
@@ -156,6 +156,91 @@ class GaussianSelfAttention(nn.Module):
             # torch.cuda.synchronize()
             
             att.append(torch.sum(full_att, dim=0)) 
+
+            # torch.cuda.synchronize()
+
+        return torch.stack(att)
+
+    # W/ bilinear after att comp
+    def forward(self, x, img_ids, mask):
+        """
+        x, q(query), k(key), v(value) : (B(batch_size), S(seq_len), D(dim))
+        mask : (B(batch_size) x S(seq_len))
+        * split D(dim) into (H(n_heads), W(width of head)) ; D = H * W
+        """
+        #Algo
+        """
+        1. Find patch index in x and y of the key we want for each query using normal dis
+
+        """
+        # (B, S, D) -proj-> (B, S, D) -split-> (B, S, H, W) -trans-> (B, H, S, W)
+        q, k, v = self.proj_q(x), self.proj_k(x), self.proj_v(x)
+        att = [] # TODO : Rename as out
+
+        # Load on GPU
+        self.cuda_avgs = Parameter(self.avgs[img_ids].cuda(), requires_grad=True)
+        self.cuda_std_devs = Parameter(self.std_devs[img_ids].cuda(), requires_grad=True)
+
+        for j, img_id in enumerate(img_ids):
+            norm_x = torch.normal(mean=torch.zeros(1, self.no_of_patches, requires_grad=True), std=self.sigma * torch.ones(1, self.no_of_patches, requires_grad=True)).cuda()
+            norm_y = torch.normal(mean=torch.zeros(1, self.no_of_patches, requires_grad=True), std=self.sigma * torch.ones(1, self.no_of_patches, requires_grad=True)).cuda()
+
+            # torch.cuda.synchronize()
+
+            key_x = ((self.grid_dim-1)/2)*(torch.ones(self.no_of_patches, requires_grad=True).cuda() + torch.tanh((norm_x + self.cuda_avgs[j][0]) * self.cuda_std_devs[j][0]))
+            key_y = ((self.grid_dim-1)/2)*(torch.ones(self.no_of_patches, requires_grad=True).cuda() + torch.tanh((norm_y + self.cuda_avgs[j][1]) * self.cuda_std_devs[j][1]))
+
+            # torch.cuda.synchronize()#(device=)
+
+            key_x_1 = torch.ceil(key_x)
+            key_x_2 = torch.floor(key_x)
+            key_y_1 = torch.ceil(key_y)
+            key_y_2 = torch.floor(key_y)
+
+            # torch.cuda.synchronize()
+
+            key_index = [0,0,0,0]
+            key_index[0] = to_indices(self.grid_dim * key_y_1 + key_x_1)
+            key_index[1] = to_indices(self.grid_dim * key_y_1 + key_x_2)
+            key_index[2] = to_indices(self.grid_dim * key_y_2 + key_x_1)
+            key_index[3] = to_indices(self.grid_dim * key_y_2 + key_x_2)
+
+            # torch.cuda.synchronize()
+
+            sampled_keys = torch.stack((k[j][key_index[0]], k[j][key_index[1]], 
+                                        k[j][key_index[2]], k[j][key_index[3]])).transpose(dim0=0, dim1=1)#4 * 256 * 256
+            sampled_values = torch.stack((v[j][key_index[0]], v[j][key_index[1]], 
+                                          v[j][key_index[2]], v[j][key_index[3]])).transpose(dim0=0, dim1=1)#4 * 256 * 256
+            
+
+            # torch.cuda.synchronize()
+
+            # Lets add ones vector for class embedding
+
+
+            _, n_s, _, p_l = sampled_keys.shape
+            class_emb = to_device(torch.ones(1, n_s, 1, p_l), get_default_device())
+            sampled_keys = torch.cat((class_emb, sampled_keys), dim=2)
+            sampled_values = torch.cat((class_emb, sampled_values), dim=2)
+
+
+            # torch.cuda.synchronize()
+
+            att_score = torch.matmul(sampled_keys.squeeze().transpose(dim0=0, dim1=1), q[j].unsqueeze(dim=2))
+            full_att = F.softmax(att_score, dim=1).transpose(dim0=0, dim1=1) * sampled_values.squeeze(dim=0) # TODO Rename as attention
+
+            # bilinear
+            sample = (key_x, key_y)
+            one = to_device(torch.ones(1), get_default_device())
+            bilinear_weighted_attention = \
+                        torch.cat((one.clone(), bilinear((key_x_1 , key_y_1), sample).squeeze(dim=0)), dim=0).unsqueeze(dim=1) * full_att[0]  + \
+                        torch.cat((one.clone(), bilinear((key_x_2 , key_y_1), sample).squeeze(dim=0)), dim=0).unsqueeze(dim=1) * full_att[1]  + \
+                        torch.cat((one.clone(), bilinear((key_x_1 , key_y_2), sample).squeeze(dim=0)), dim=0).unsqueeze(dim=1) * full_att[2]  + \
+                        torch.cat((one.clone(), bilinear((key_x_2 , key_y_2), sample).squeeze(dim=0)), dim=0).unsqueeze(dim=1) * full_att[3]
+
+            # torch.cuda.synchronize()
+            
+            att.append(bilinear_weighted_attention) 
 
             # torch.cuda.synchronize()
 
