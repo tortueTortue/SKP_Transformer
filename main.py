@@ -86,11 +86,8 @@ if __name__ == '__main__':
    
 
     ViTFromScratch = ViT('B_16_imagenet1k', pretrained=False, num_classes=10) #, patches=4 dim=64)
-    print(f"Parameters {count_model_parameters(ViTFromScratch, False)}")
-    start_time = time.time()
     save_model(train_model(epochs, ViTFromScratch, "ViTFromScratch", imagenette_data, batch_size, model_dir), "ViTFromScratch", model_dir)
     ViTFromScratch = load_model(f"E:/Git/SKP_Transformer/models/trained_models/ViTFromScratch.pt")
-    print(f"Training time for {epochs} epochs : {time.time() - start_time}")
     print_accuracy_per_class(ViTFromScratch, classes, batch_size, imagenette_data.test_loader)
     print_accuracy(ViTFromScratch, classes, batch_size, imagenette_data.test_loader)
 
