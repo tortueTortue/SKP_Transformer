@@ -53,6 +53,7 @@ class StochViT(nn.Module):
         image_size: Optional[int] = None,
         num_classes: Optional[int] = None,
         no_of_imgs_for_training: int = 50000,
+        sigma: float = 1
     ):
         super().__init__()
 
@@ -85,7 +86,7 @@ class StochViT(nn.Module):
         
         #TODO:  Stochastic Transformer
         self.transformer = Transformer(num_layers=num_layers, dim=dim, num_heads=num_heads, 
-                                       ff_dim=ff_dim, dropout=dropout_rate, no_of_imgs_for_training = no_of_imgs_for_training)
+                                       ff_dim=ff_dim, dropout=dropout_rate, no_of_imgs_for_training = no_of_imgs_for_training, sigma=sigma)
         
         # Representation layer
         if representation_size and load_repr_layer:

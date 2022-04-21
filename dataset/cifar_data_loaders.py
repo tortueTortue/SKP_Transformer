@@ -41,7 +41,8 @@ class CIFAR10WithIndices(CIFAR10):
 
 
 class Cifar10Dataset:
-    def __init__(self, batch_size=128): #TODO Add with indexes params and transform
+    def __init__(self, batch_size=128, subset=False, subset_size=10000, test_subset_size=5000): #TODO Add with indexes params and transform
+        
         dataset = CIFAR10WithIndices(root='data/', download=True, transform=transforms.Compose([
             transforms.Resize((256, 256)),
             # transforms.Resize((384, 384)),
@@ -54,6 +55,7 @@ class Cifar10Dataset:
             transforms.ToTensor(),
             transforms.Normalize(0.5, 0.5),
         ]))
+            
         # dataset = CIFAR10WithIndices(root='data/', download=True, transform=ToTensor())
         # test_dataset = CIFAR10WithIndices(root='data/', train=False, transform=ToTensor())
 
@@ -62,9 +64,21 @@ class Cifar10Dataset:
         self.classes = ['airplane', 'automobile', 'bird', 'cat', 'deer',
                         'dog', 'frog', 'horse', 'ship', 'truck']
 
+        self.dataset_length = len(dataset)
+
+        if subset:
+            assert subset_size <= self.dataset_length
+            assert test_subset_size <= len(test_dataset)
+            dataset = torch.utils.data.Subset(dataset, range(subset_size))
+            test_dataset = torch.utils.data.Subset(test_dataset, range(test_subset_size))
+
+            self.dataset_length = subset_size
+
+        
+
         torch.manual_seed(43)
-        train_dataset, val_dataset = random_split(dataset, [int(len(dataset) * 0.85),
-                                                            int(len(dataset) * 0.15)])
+        train_dataset, val_dataset = random_split(dataset, [int(self.dataset_length * 0.85),
+                                                            int(self.dataset_length * 0.15)])
 
 #         self.train_loader = DataLoader(
 #             train_dataset, batch_size, shuffle=True, num_workers=4, pin_memory=True)
@@ -76,7 +90,7 @@ class Cifar10Dataset:
 
         # TODO: Set num of workers to 0 to get a more meanigful error message
         self.train_loader = DataLoader(train_dataset, batch_size, shuffle=True, num_workers=0, pin_memory=True)
-        self.val_loader = DataLoader(val_dataset, batch_size*2, num_workers=0, pin_memory=True)
+        self.val_loader = DataLoader(val_dataset, batch_size, num_workers=0, pin_memory=True)
         self.test_loader = DataLoader(test_dataset, batch_size*2, num_workers=0, pin_memory=True)
 
 

@@ -2,6 +2,7 @@
 Adapted from https://github.com/lukemelas/simple-bert
 """
  
+from importlib_metadata import requires
 import numpy as np
 from torch import nn
 from torch import Tensor 
@@ -13,6 +14,7 @@ import torch
 from torch.nn.parameter import Parameter
 
 import math
+from training.metrics.metrics import print_accuracy
 
 from training.utils.utils import get_default_device, to_device
 
@@ -42,7 +44,7 @@ def merge_last(x, n_dims):
 
 class GaussianSelfAttention(nn.Module):
     """Attention"""
-    def __init__(self, dim, num_heads, dropout, no_of_imgs, no_of_patches):
+    def __init__(self, dim, num_heads, dropout, no_of_imgs, no_of_patches, sigma=1):
         super().__init__()
         self.proj_q = nn.Linear(dim, dim)
         self.proj_k = nn.Linear(dim, dim)
@@ -54,6 +56,8 @@ class GaussianSelfAttention(nn.Module):
         self.grid_dim = np.sqrt(no_of_patches)
         self.avgs = Parameter(torch.zeros(no_of_imgs, 2, no_of_patches, requires_grad=True)) # no_of_imgs * 2 (x and y)
         self.std_devs = Parameter(torch.ones(no_of_imgs, 2, no_of_patches, requires_grad=True))# no_of_imgs * 2 (x and y)
+        self.sigma = sigma
+        self.temperature_att_sc = 8
 
 
     def forward(self, x, img_ids, mask):
@@ -76,17 +80,22 @@ class GaussianSelfAttention(nn.Module):
         self.cuda_std_devs = Parameter(self.std_devs[img_ids].cuda(), requires_grad=True)
 
         for j, img_id in enumerate(img_ids):
-            norm_x = torch.normal(mean=torch.zeros(1, self.no_of_patches, requires_grad=True), std=torch.ones(1, self.no_of_patches, requires_grad=True)).cuda()
-            norm_y = torch.normal(mean=torch.zeros(1, self.no_of_patches, requires_grad=True), std=torch.ones(1, self.no_of_patches, requires_grad=True)).cuda()
+            norm_x = torch.normal(mean=torch.zeros(1, self.no_of_patches, requires_grad=True), std=self.sigma * torch.ones(1, self.no_of_patches, requires_grad=True)).cuda()
+            norm_y = torch.normal(mean=torch.zeros(1, self.no_of_patches, requires_grad=True), std=self.sigma * torch.ones(1, self.no_of_patches, requires_grad=True)).cuda()
 
-            key_x = (self.grid_dim/2)*(torch.ones(self.no_of_patches).cuda() + torch.tanh((norm_x + self.cuda_avgs[j][0]) * self.cuda_std_devs[j][0]))
-            key_y = (self.grid_dim/2)*(torch.ones(self.no_of_patches).cuda() + torch.tanh((norm_y + self.cuda_avgs[j][1]) * self.cuda_std_devs[j][1]))
+            # torch.cuda.synchronize()
+
+            key_x = ((self.grid_dim-1)/2)*(torch.ones(self.no_of_patches, requires_grad=True).cuda() + torch.tanh((norm_x + self.cuda_avgs[j][0]) * self.cuda_std_devs[j][0]))
+            key_y = ((self.grid_dim-1)/2)*(torch.ones(self.no_of_patches, requires_grad=True).cuda() + torch.tanh((norm_y + self.cuda_avgs[j][1]) * self.cuda_std_devs[j][1]))
+
+            # torch.cuda.synchronize()#(device=)
 
             key_x_1 = torch.ceil(key_x)
             key_x_2 = torch.floor(key_x)
             key_y_1 = torch.ceil(key_y)
             key_y_2 = torch.floor(key_y)
 
+            # torch.cuda.synchronize()
 
             key_index = [0,0,0,0]
             key_index[0] = to_indices(self.grid_dim * key_y_1 + key_x_1)
@@ -94,14 +103,33 @@ class GaussianSelfAttention(nn.Module):
             key_index[2] = to_indices(self.grid_dim * key_y_2 + key_x_1)
             key_index[3] = to_indices(self.grid_dim * key_y_2 + key_x_2)
 
+            # torch.cuda.synchronize()
+
 
             # TODO Refactor this : compute once bilinear for both values and keys, muultiply key and val once
             # SAMPLED KEY = E{ (1 - abs(Pn_x - Sample_x)) * (1 - abs(Pn_y - Sample_y)) * Kn
             sample = (key_x, key_y)
-            sampled_key = (bilinear((key_x_1 , key_y_1), sample) * k[j][key_index[0]].transpose(dim0=1, dim1=2) + \
-                           bilinear((key_x_2 , key_y_1), sample) * k[j][key_index[1]].transpose(dim0=1, dim1=2) + \
-                           bilinear((key_x_1 , key_y_2), sample) * k[j][key_index[2]].transpose(dim0=1, dim1=2) + \
-                           bilinear((key_x_2 , key_y_2), sample) * k[j][key_index[3]].transpose(dim0=1, dim1=2)).transpose(dim0=1, dim1=2)
+            sampled_key = ((bilinear((key_x_1 , key_y_1), sample)) *  
+                                k[j][key_index[0]]
+                                .transpose(dim0=1, dim1=2) + \
+                           (bilinear((key_x_2 , key_y_1), sample)) * 
+                                k[j][key_index[1]]
+                                .transpose(dim0=1, dim1=2) + \
+                           (bilinear((key_x_1 , key_y_2), sample)) * 
+                                k[j][key_index[2]]
+                                .transpose(dim0=1, dim1=2) + \
+                           (bilinear((key_x_2 , key_y_2), sample)) * 
+                                k[j][key_index[3]]
+                                .transpose(dim0=1, dim1=2)
+                            ).transpose(dim0=1, dim1=2)
+
+
+            # sampled_key = (bilinear((key_x_1 , key_y_1), sample) * k[j][key_index[0]].transpose(dim0=1, dim1=2) + \
+            #                bilinear((key_x_2 , key_y_1), sample) * k[j][key_index[1]].transpose(dim0=1, dim1=2) + \
+            #                bilinear((key_x_1 , key_y_2), sample) * k[j][key_index[2]].transpose(dim0=1, dim1=2) + \
+            #                bilinear((key_x_2 , key_y_2), sample) * k[j][key_index[3]].transpose(dim0=1, dim1=2)).transpose(dim0=1, dim1=2)
+
+            # torch.cuda.synchronize()
 
             sampled_value = (bilinear((key_x_1 , key_y_1), sample) * v[j][key_index[0]].transpose(dim0=1, dim1=2) + \
                              bilinear((key_x_2 , key_y_1), sample) * v[j][key_index[1]].transpose(dim0=1, dim1=2) + \
@@ -109,16 +137,27 @@ class GaussianSelfAttention(nn.Module):
                              bilinear((key_x_2 , key_y_2), sample) * v[j][key_index[3]].transpose(dim0=1, dim1=2)).transpose(dim0=1, dim1=2)
             
 
+            # torch.cuda.synchronize()
+
             # Lets add ones vector for class embedding
             _, _, k_dim = sampled_key.shape
             class_emb = to_device(torch.ones(1, 1, k_dim), get_default_device())
             sampled_key = torch.cat((class_emb, sampled_key), dim=1)
             sampled_value = torch.cat((class_emb, sampled_value), dim=1)
 
-            at_sc = torch.matmul(sampled_key.transpose(dim0=0, dim1=1), q[j].unsqueeze(dim=2))
-            full_att = F.softmax(at_sc, dim=1).transpose(dim0=0, dim1=1) * sampled_value.squeeze(dim=0)
+            # torch.cuda.synchronize()
+
+            att_score = torch.matmul(sampled_key.transpose(dim0=0, dim1=1), q[j].unsqueeze(dim=2))
+            # full_att = F.softmax(at_sc, dim=1).transpose(dim0=0, dim1=1) * sampled_value.squeeze(dim=0)
+            # full_att = att_score.transpose(dim0=0, dim1=1) * sampled_value.squeeze(dim=0) 
+            # full_att = att_score.transpose(dim0=0, dim1=1) * sampled_value.squeeze(dim=0) 
+            full_att = self.temperature_att_sc *  torch.sigmoid(att_score).transpose(dim0=0, dim1=1) * sampled_value.squeeze(dim=0) 
+
+            # torch.cuda.synchronize()
             
             att.append(torch.sum(full_att, dim=0)) 
+
+            # torch.cuda.synchronize()
 
         return torch.stack(att)
 
@@ -139,9 +178,9 @@ class PositionWiseFeedForward(nn.Module):
 
 class Block(nn.Module):
     """Transformer Block"""
-    def __init__(self, dim, num_heads, ff_dim, dropout, no_of_imgs, no_of_patches):
+    def __init__(self, dim, num_heads, ff_dim, dropout, no_of_imgs, no_of_patches, sigma=1):
         super().__init__()
-        self.attn = GaussianSelfAttention(dim, num_heads, dropout, no_of_imgs, no_of_patches)
+        self.attn = GaussianSelfAttention(dim, num_heads, dropout, no_of_imgs, no_of_patches, sigma=sigma)
         self.proj = nn.Linear(dim, dim)
         self.norm1 = nn.LayerNorm(dim, eps=1e-6)
         self.pwff = PositionWiseFeedForward(dim, ff_dim)
@@ -158,10 +197,10 @@ class Block(nn.Module):
 
 class Transformer(nn.Module):
     """Transformer with Self-Attentive Blocks"""
-    def __init__(self, num_layers, dim, num_heads, ff_dim, dropout, no_of_imgs_for_training = 50000, no_of_patches = 16 *16):
+    def __init__(self, num_layers, dim, num_heads, ff_dim, dropout, no_of_imgs_for_training = 50000, no_of_patches = 16 *16, sigma=1):
         super().__init__()
         self.blocks = nn.ModuleList([
-            Block(dim, num_heads, ff_dim, dropout, no_of_imgs_for_training, no_of_patches) for _ in range(num_layers)])
+            Block(dim, num_heads, ff_dim, dropout, no_of_imgs_for_training, no_of_patches, sigma=sigma) for _ in range(num_layers)])
 
     def forward(self, x, ids, mask=None):
         for block in self.blocks:
@@ -178,7 +217,7 @@ class Transformer(nn.Module):
             block.attn.std_devs[indexes].retain_graph = True
             block.attn.std_devs[indexes].grad = grad(loss, block.attn.std_devs[indexes])
 
-    def propagate_attention(self, lr, indexes, momentum):
+    def propagate_attention(self, lr, indexes, momentum): #TODO Try with momentum
         for block in self.blocks:
 
             with torch.no_grad():
@@ -186,3 +225,15 @@ class Transformer(nn.Module):
                 block.attn.cuda_std_devs -= lr * block.attn.cuda_std_devs.grad
                 block.attn.avgs[indexes] = block.attn.cuda_avgs.cpu()
                 block.attn.std_devs[indexes] = block.attn.cuda_std_devs.cpu()
+
+                # TODO MAybe set grad to 0 afterwards
+
+
+    def log_gaussian(self, debug=True, no_of_imgs=3):
+        for i in range(no_of_imgs):
+            if debug:
+                first_block = self.blocks[0].attn
+                print(f"First block normal params for picture {i} avg : {first_block.avgs[i]} std_dev : {first_block.std_devs[i]}")
+
+
+
