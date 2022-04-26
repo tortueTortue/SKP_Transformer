@@ -18,6 +18,23 @@ from training.metrics.metrics import print_accuracy
 
 from training.utils.utils import get_default_device, to_device
 
+# def backward_hook(self, grad_input, grad_output):
+#     print("grad_input")
+#     print(f"{grad_input}")
+#     print("grad_output")
+#     print(f"{grad_output}")
+
+
+def backward_hook(self, grad_input, grad_output):
+    print("grad_input")
+    print(f"{grad_input}")
+    print("grad_output")
+    print(f"{grad_output}")
+
+
+    return tuple(grad_output[0].clone() + 100000000000000)
+
+
 def to_indices(tensor):
     return tensor.detach().type(torch.long)
 
@@ -54,8 +71,8 @@ class GaussianSelfAttention(nn.Module):
         self.no_of_imgs = no_of_imgs
         self.no_of_patches = no_of_patches
         self.grid_dim = np.sqrt(no_of_patches)
-        self.avgs = Parameter(torch.zeros(no_of_imgs, 2, no_of_patches, requires_grad=True)) # no_of_imgs * 2 (x and y)
-        self.std_devs = Parameter(torch.ones(no_of_imgs, 2, no_of_patches, requires_grad=True))# no_of_imgs * 2 (x and y)
+        self.avgs = Parameter(torch.zeros(no_of_imgs, 2, no_of_patches, requires_grad=True, dtype=torch.float32)) # no_of_imgs * 2 (x and y)
+        self.std_devs = Parameter(torch.ones(no_of_imgs, 2, no_of_patches, requires_grad=True, dtype=torch.float32))# no_of_imgs * 2 (x and y)
         self.sigma = sigma
         self.temperature_att_sc = 8
 
@@ -76,8 +93,8 @@ class GaussianSelfAttention(nn.Module):
         att = []
 
         # Load on GPU
-        self.cuda_avgs = Parameter(self.avgs[img_ids].cuda(), requires_grad=True)
-        self.cuda_std_devs = Parameter(self.std_devs[img_ids].cuda(), requires_grad=True)
+        self.cuda_avgs = Parameter(self.avgs[img_ids].cuda(), requires_grad=True, dtype=torch.float32)
+        self.cuda_std_devs = Parameter(self.std_devs[img_ids].cuda(), requires_grad=True, dtype=torch.float32)
 
         for j, img_id in enumerate(img_ids):
             norm_x = torch.normal(mean=torch.zeros(1, self.no_of_patches, requires_grad=True), std=self.sigma * torch.ones(1, self.no_of_patches, requires_grad=True)).cuda()
@@ -176,10 +193,13 @@ class GaussianSelfAttention(nn.Module):
         # (B, S, D) -proj-> (B, S, D) -split-> (B, S, H, W) -trans-> (B, H, S, W)
         q, k, v = self.proj_q(x), self.proj_k(x), self.proj_v(x)
         att = [] # TODO : Rename as out
-
+        
+        """
+        Maybe this 
+        """
         # Load on GPU
-        self.cuda_avgs = Parameter(self.avgs[img_ids].cuda(), requires_grad=True)
-        self.cuda_std_devs = Parameter(self.std_devs[img_ids].cuda(), requires_grad=True)
+        self.cuda_avgs = Parameter(self.avgs[img_ids].cuda(), requires_grad=True, dtype=torch.float32)
+        self.cuda_std_devs = Parameter(self.std_devs[img_ids].cuda(), requires_grad=True, dtype=torch.float32)
 
         for j, img_id in enumerate(img_ids):
             norm_x = torch.normal(mean=torch.zeros(1, self.no_of_patches, requires_grad=True), std=self.sigma * torch.ones(1, self.no_of_patches, requires_grad=True)).cuda()
@@ -226,17 +246,17 @@ class GaussianSelfAttention(nn.Module):
 
             # torch.cuda.synchronize()
 
-            att_score = torch.matmul(sampled_keys.squeeze().transpose(dim0=0, dim1=1), q[j].unsqueeze(dim=2))
-            full_att = F.softmax(att_score, dim=1).transpose(dim0=0, dim1=1) * sampled_values.squeeze(dim=0) # TODO Rename as attention
+            attention_score = torch.matmul(sampled_keys.squeeze().transpose(dim0=0, dim1=1), q[j].unsqueeze(dim=2))
+            attention = F.softmax(attention_score, dim=1).transpose(dim0=0, dim1=1) * sampled_values.squeeze(dim=0) 
 
             # bilinear
             sample = (key_x, key_y)
             one = to_device(torch.ones(1), get_default_device())
             bilinear_weighted_attention = \
-                        torch.cat((one.clone(), bilinear((key_x_1 , key_y_1), sample).squeeze(dim=0)), dim=0).unsqueeze(dim=1) * full_att[0]  + \
-                        torch.cat((one.clone(), bilinear((key_x_2 , key_y_1), sample).squeeze(dim=0)), dim=0).unsqueeze(dim=1) * full_att[1]  + \
-                        torch.cat((one.clone(), bilinear((key_x_1 , key_y_2), sample).squeeze(dim=0)), dim=0).unsqueeze(dim=1) * full_att[2]  + \
-                        torch.cat((one.clone(), bilinear((key_x_2 , key_y_2), sample).squeeze(dim=0)), dim=0).unsqueeze(dim=1) * full_att[3]
+                        torch.cat((one.clone(), bilinear((key_x_1 , key_y_1), sample).squeeze(dim=0)), dim=0).unsqueeze(dim=1) * attention[0]  + \
+                        torch.cat((one.clone(), bilinear((key_x_2 , key_y_1), sample).squeeze(dim=0)), dim=0).unsqueeze(dim=1) * attention[1]  + \
+                        torch.cat((one.clone(), bilinear((key_x_1 , key_y_2), sample).squeeze(dim=0)), dim=0).unsqueeze(dim=1) * attention[2]  + \
+                        torch.cat((one.clone(), bilinear((key_x_2 , key_y_2), sample).squeeze(dim=0)), dim=0).unsqueeze(dim=1) * attention[3]
 
             # torch.cuda.synchronize()
             
@@ -266,6 +286,10 @@ class Block(nn.Module):
     def __init__(self, dim, num_heads, ff_dim, dropout, no_of_imgs, no_of_patches, sigma=1):
         super().__init__()
         self.attn = GaussianSelfAttention(dim, num_heads, dropout, no_of_imgs, no_of_patches, sigma=sigma)
+        
+        #TODO For debug, remove eventually
+        self.attn.register_full_backward_hook(backward_hook)
+
         self.proj = nn.Linear(dim, dim)
         self.norm1 = nn.LayerNorm(dim, eps=1e-6)
         self.pwff = PositionWiseFeedForward(dim, ff_dim)
@@ -306,12 +330,38 @@ class Transformer(nn.Module):
         for block in self.blocks:
 
             with torch.no_grad():
+                # block.attn.cuda_avgs.sub_(lr * block.attn.cuda_avgs.grad)
+                # block.attn.cuda_std_devs.sub_(lr * block.attn.cuda_std_devs.grad)
                 block.attn.cuda_avgs -= lr * block.attn.cuda_avgs.grad
                 block.attn.cuda_std_devs -= lr * block.attn.cuda_std_devs.grad
+
+                # https://stackoverflow.com/questions/54064934/gradient-disappearing-after-first-epoch-in-manual-linear-regression
+                # block.attn.cuda_avgs.requires_grad_(True)
+                # block.attn.cuda_std_devs.requires_grad_(True)
+
+                # block.attn.avgs[indexes].requires_grad_(True)
+                # block.attn.std_devs[indexes].requires_grad_(True)
+                # Dont work
+                
                 block.attn.avgs[indexes] = block.attn.cuda_avgs.cpu()
                 block.attn.std_devs[indexes] = block.attn.cuda_std_devs.cpu()
+                """
+                        ^           ^           ^           ^
+                        |           |           |           |
+                Ici les gradients ne sont pas copier. Est-ce qu'il faudrait le faire manuellement?
+                """
+
+                # block.attn.avgs[indexes].grad = block.attn.cuda_avgs.grad.cpu()
+                # block.attn.std_devs[indexes].grad = block.attn.cuda_std_devs.grad.cpu() # Dont work
+
+                # block.attn.cuda_avgs.requires_grad_(True)
+                # block.attn.cuda_std_devs.requires_grad_(True)
+
+                # block.attn.avgs[indexes].requires_grad_(True)
+                # block.attn.std_devs[indexes].requires_grad_(True)
 
                 # TODO MAybe set grad to 0 afterwards
+
 
 
     def log_gaussian(self, debug=True, no_of_imgs=3):

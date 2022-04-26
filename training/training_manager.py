@@ -14,13 +14,11 @@ import time
 from training.utils.utils import batches_to_device, get_default_device, to_device, save_checkpoints
 from training.metrics.metrics import accuracy, count_model_parameters
 from training.utils.logger import start_training_logging
-
+from datetime import datetime
 
 
 from optimizer.sam.sam import SAM
 
-from torch.utils.tensorboard import SummaryWriter
-writer = SummaryWriter("runs/debug")
 
 # TODO : Add configs for this one
 PATH = ""
@@ -67,8 +65,10 @@ def train(epochs_no: int,  #TODO Add debug option
         optimizer = SGD(model.parameters(), lr=0.0001, momentum=0.9)
 
     if True: # add debug var
+        from torch.utils.tensorboard import SummaryWriter
+        writer = SummaryWriter(f'runs/debug/{model.__class__.__name__}-{datetime.now().strftime("%m-%d-%Y-%H-%M-%S")}')
         im, _, ids = next(iter(train_set))
-        writer.add_graph(model, (im.cuda(), ids.cuda()), verbose=True)
+        # writer.add_graph(model, (im.cuda(), ids.cuda()), verbose=True)
         import torchvision
         grid = torchvision.utils.make_grid(im)
         writer.add_image('images', grid, 0)
@@ -112,11 +112,13 @@ def train(epochs_no: int,  #TODO Add debug option
             if True and batch_index == (len(train_set)-1): # add debug var
                 writer.add_scalar("Gradient Sum/First Transformer Block/ First img/ Avg / Grad", model.transformer.blocks[0].attn.cuda_avgs.grad.sum(), epoch)
                 writer.add_scalar("Gradient Sum/First Transformer Block/ First img/ Std_Dev / Grad", model.transformer.blocks[0].attn.cuda_std_devs.grad.sum(), epoch)
-                writer.add_scalar("Gradient Sum/Last Transformer Block/ First img/ Avg / Grad", model.transformer.blocks[11].attn.cuda_avgs.grad.sum(), epoch)
-                writer.add_scalar("Gradient Sum/Last Transformer Block/ First img/ Std_Dev / Grad", model.transformer.blocks[11].attn.cuda_std_devs.grad.sum(), epoch)
+              
+                last_block = len(model.transformer.blocks) - 1
+                writer.add_scalar("Gradient Sum/Last Transformer Block/ First img/ Avg / Grad", model.transformer.blocks[last_block].attn.cuda_avgs.grad.sum(), epoch)
+                writer.add_scalar("Gradient Sum/Last Transformer Block/ First img/ Std_Dev / Grad", model.transformer.blocks[last_block].attn.cuda_std_devs.grad.sum(), epoch)
                 
                 writer.add_scalar("Gradient Sum/First pwff.fc1/ First img/ Avg / Grad", model.transformer.blocks[0].pwff.fc1.weight.grad.sum(), epoch)
-                writer.add_scalar("Gradient Sum/Last pwff.fc1/ First img/ Std_Dev / Grad", model.transformer.blocks[11].pwff.fc1.weight.grad.sum(), epoch)
+                writer.add_scalar("Gradient Sum/Last pwff.fc1/ First img/ Std_Dev / Grad", model.transformer.blocks[last_block].pwff.fc1.weight.grad.sum(), epoch)
 
         #TODO Add end of epoch callback
         end_of_epoch_routine(model=model)
