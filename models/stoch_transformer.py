@@ -30,13 +30,18 @@ def backward_hook(self, grad_input, grad_output):
     print(f"{grad_input}")
     print("grad_output")
     print(f"{grad_output}")
+    
+    # grad_input = grad(current_layer) * grad_output
 
-
-    return tuple(grad_output[0].clone() + 100000000000000)
+    # return tuple([9 * torch.ones(grad.shape, dtype=grad.dtype).cuda() if grad is not None else None for grad in grad_input])
 
 
 def to_indices(tensor):
     return tensor.detach().type(torch.long)
+
+def take_x(tensor, index):
+    a,b,c = tensor.shape
+    return tensor.view(a,c,b)[index].view(a,b,c)
 
 def bilinear(p, s):
     """
@@ -74,10 +79,10 @@ class GaussianSelfAttention(nn.Module):
         self.avgs = Parameter(torch.zeros(no_of_imgs, 2, no_of_patches, requires_grad=True, dtype=torch.float32)) # no_of_imgs * 2 (x and y)
         self.std_devs = Parameter(torch.ones(no_of_imgs, 2, no_of_patches, requires_grad=True, dtype=torch.float32))# no_of_imgs * 2 (x and y)
         self.sigma = sigma
-        self.temperature_att_sc = 8
+        self.temperature_att_sc = 0.01
 
 
-    def forward2(self, x, img_ids, mask):
+    def forward_bilin_before(self, x, img_ids, mask):
         """
         x, q(query), k(key), v(value) : (B(batch_size), S(seq_len), D(dim))
         mask : (B(batch_size) x S(seq_len))
@@ -93,8 +98,8 @@ class GaussianSelfAttention(nn.Module):
         att = []
 
         # Load on GPU
-        self.cuda_avgs = Parameter(self.avgs[img_ids].cuda(), requires_grad=True, dtype=torch.float32)
-        self.cuda_std_devs = Parameter(self.std_devs[img_ids].cuda(), requires_grad=True, dtype=torch.float32)
+        self.cuda_avgs = Parameter(self.avgs[img_ids].cuda(), requires_grad=True,)
+        self.cuda_std_devs = Parameter(self.std_devs[img_ids].cuda(), requires_grad=True)
 
         for j, img_id in enumerate(img_ids):
             norm_x = torch.normal(mean=torch.zeros(1, self.no_of_patches, requires_grad=True), std=self.sigma * torch.ones(1, self.no_of_patches, requires_grad=True)).cuda()
@@ -168,7 +173,7 @@ class GaussianSelfAttention(nn.Module):
             # full_att = F.softmax(at_sc, dim=1).transpose(dim0=0, dim1=1) * sampled_value.squeeze(dim=0)
             # full_att = att_score.transpose(dim0=0, dim1=1) * sampled_value.squeeze(dim=0) 
             # full_att = att_score.transpose(dim0=0, dim1=1) * sampled_value.squeeze(dim=0) 
-            full_att = self.temperature_att_sc *  torch.sigmoid(att_score).transpose(dim0=0, dim1=1) * sampled_value.squeeze(dim=0) 
+            full_att = torch.sigmoid(self.temperature_att_sc * att_score).transpose(dim0=0, dim1=1) * sampled_value.squeeze(dim=0) 
 
             # torch.cuda.synchronize()
             
@@ -179,7 +184,8 @@ class GaussianSelfAttention(nn.Module):
         return torch.stack(att)
 
     # W/ bilinear after att comp
-    def forward(self, x, img_ids, mask):
+    def forward_bilin_after_(self, x, img_ids, mask):
+    # def forward_bilin_before(self, x, img_ids, mask):
         """
         x, q(query), k(key), v(value) : (B(batch_size), S(seq_len), D(dim))
         mask : (B(batch_size) x S(seq_len))
@@ -198,8 +204,8 @@ class GaussianSelfAttention(nn.Module):
         Maybe this 
         """
         # Load on GPU
-        self.cuda_avgs = Parameter(self.avgs[img_ids].cuda(), requires_grad=True, dtype=torch.float32)
-        self.cuda_std_devs = Parameter(self.std_devs[img_ids].cuda(), requires_grad=True, dtype=torch.float32)
+        self.cuda_avgs = Parameter(self.avgs[img_ids].cuda(), requires_grad=True)
+        self.cuda_std_devs = Parameter(self.std_devs[img_ids].cuda(), requires_grad=True)
 
         for j, img_id in enumerate(img_ids):
             norm_x = torch.normal(mean=torch.zeros(1, self.no_of_patches, requires_grad=True), std=self.sigma * torch.ones(1, self.no_of_patches, requires_grad=True)).cuda()
@@ -247,7 +253,95 @@ class GaussianSelfAttention(nn.Module):
             # torch.cuda.synchronize()
 
             attention_score = torch.matmul(sampled_keys.squeeze().transpose(dim0=0, dim1=1), q[j].unsqueeze(dim=2))
-            attention = F.softmax(attention_score, dim=1).transpose(dim0=0, dim1=1) * sampled_values.squeeze(dim=0) 
+            attention = self.temperature_att_sc * F.softmax(attention_score, dim=1).transpose(dim0=0, dim1=1) * sampled_values.squeeze(dim=0) 
+
+            # bilinear
+            sample = (key_x, key_y)
+            one = to_device(torch.ones(1), get_default_device())
+            bilinear_weighted_attention = \
+                        torch.cat((one.clone(), bilinear((key_x_1 , key_y_1), sample).squeeze(dim=0)), dim=0).unsqueeze(dim=1) * attention[0]  + \
+                        torch.cat((one.clone(), bilinear((key_x_2 , key_y_1), sample).squeeze(dim=0)), dim=0).unsqueeze(dim=1) * attention[1]  + \
+                        torch.cat((one.clone(), bilinear((key_x_1 , key_y_2), sample).squeeze(dim=0)), dim=0).unsqueeze(dim=1) * attention[2]  + \
+                        torch.cat((one.clone(), bilinear((key_x_2 , key_y_2), sample).squeeze(dim=0)), dim=0).unsqueeze(dim=1) * attention[3]
+
+            # torch.cuda.synchronize()
+            
+            att.append(bilinear_weighted_attention) 
+
+            # torch.cuda.synchronize()
+
+        return torch.stack(att)
+
+    # W/ bilinear after att comp img_id
+    def forward_bilin_after(self, x, img_ids, mask):
+        """
+        x, q(query), k(key), v(value) : (B(batch_size), S(seq_len), D(dim))
+        mask : (B(batch_size) x S(seq_len))
+        * split D(dim) into (H(n_heads), W(width of head)) ; D = H * W
+        """
+        #Algo
+        """
+        1. Find patch index in x and y of the key we want for each query using normal dis
+
+        """
+        # (B, S, D) -proj-> (B, S, D) -split-> (B, S, H, W) -trans-> (B, H, S, W)
+        q, k, v = self.proj_q(x), self.proj_k(x), self.proj_v(x)
+        att = [] # TODO : Rename as out
+        
+        """
+        Maybe this 
+        """
+        # Load on GPU
+        self.cuda_avgs = Parameter(self.avgs[img_ids].cuda(), requires_grad=True)
+        self.cuda_std_devs = Parameter(self.std_devs[img_ids].cuda(), requires_grad=True)
+
+        for j in range(img_ids):
+            norm_x = torch.normal(mean=torch.zeros(1, self.no_of_patches, requires_grad=True), std=self.sigma * torch.ones(1, self.no_of_patches, requires_grad=True)).cuda()
+            norm_y = torch.normal(mean=torch.zeros(1, self.no_of_patches, requires_grad=True), std=self.sigma * torch.ones(1, self.no_of_patches, requires_grad=True)).cuda()
+
+            # torch.cuda.synchronize()
+
+            key_x = ((self.grid_dim-1)/2)*(torch.ones(self.no_of_patches, requires_grad=True).cuda() + torch.tanh((norm_x + self.cuda_avgs[j][0]) * self.cuda_std_devs[j][0]))
+            key_y = ((self.grid_dim-1)/2)*(torch.ones(self.no_of_patches, requires_grad=True).cuda() + torch.tanh((norm_y + self.cuda_avgs[j][1]) * self.cuda_std_devs[j][1]))
+
+            # torch.cuda.synchronize()#(device=)
+
+            key_x_1 = torch.ceil(key_x)
+            key_x_2 = torch.floor(key_x)
+            key_y_1 = torch.ceil(key_y)
+            key_y_2 = torch.floor(key_y)
+
+            # torch.cuda.synchronize()
+
+            key_index = [0,0,0,0]
+            key_index[0] = to_indices(self.grid_dim * key_y_1 + key_x_1)
+            key_index[1] = to_indices(self.grid_dim * key_y_1 + key_x_2)
+            key_index[2] = to_indices(self.grid_dim * key_y_2 + key_x_1)
+            key_index[3] = to_indices(self.grid_dim * key_y_2 + key_x_2)
+
+            # torch.cuda.synchronize()
+
+            sampled_keys = torch.stack((k[j][key_index[0]], k[j][key_index[1]], 
+                                        k[j][key_index[2]], k[j][key_index[3]])).transpose(dim0=0, dim1=1)#4 * 256 * 256
+            sampled_values = torch.stack((v[j][key_index[0]], v[j][key_index[1]], 
+                                          v[j][key_index[2]], v[j][key_index[3]])).transpose(dim0=0, dim1=1)#4 * 256 * 256
+            
+
+            # torch.cuda.synchronize()
+
+            # Lets add ones vector for class embedding
+
+
+            _, n_s, _, p_l = sampled_keys.shape
+            class_emb = to_device(torch.ones(1, n_s, 1, p_l), get_default_device())
+            sampled_keys = torch.cat((class_emb, sampled_keys), dim=2)
+            sampled_values = torch.cat((class_emb, sampled_values), dim=2)
+
+
+            # torch.cuda.synchronize()
+
+            attention_score = torch.matmul(sampled_keys.squeeze().transpose(dim0=0, dim1=1), q[j].unsqueeze(dim=2))
+            attention = self.temperature_att_sc * F.softmax(attention_score, dim=1).transpose(dim0=0, dim1=1) * sampled_values.squeeze(dim=0) 
 
             # bilinear
             sample = (key_x, key_y)
@@ -267,7 +361,329 @@ class GaussianSelfAttention(nn.Module):
         return torch.stack(att)
 
 #TODO : Add test mode without estimation
+    #Dumb forward for debuging
+    def forward_dummy_debug(self, x, img_ids, mask):
+        self.cuda_avgs = Parameter(self.avgs[img_ids].cuda(), requires_grad=True)
+        self.cuda_std_devs = Parameter(self.std_devs[img_ids].cuda(), requires_grad=True)
 
+        return (self.cuda_std_devs.sum() + self.cuda_avgs.sum()) * x
+
+    # TODO Isolate part at fault
+    def forward_debug(self, x, img_ids, mask):
+        """
+        x, q(query), k(key), v(value) : (B(batch_size), S(seq_len), D(dim))
+        mask : (B(batch_size) x S(seq_len))
+        * split D(dim) into (H(n_heads), W(width of head)) ; D = H * W
+        """
+        #Algo
+        """
+        1. Find patch index in x and y of the key we want for each query using normal dis
+
+        """
+        # (B, S, D) -proj-> (B, S, D) -split-> (B, S, H, W) -trans-> (B, H, S, W)
+        q, k, v = self.proj_q(x), self.proj_k(x), self.proj_v(x)
+        att = [] # TODO : Rename as out
+        
+        """
+        Maybe this 
+        """
+        # Load on GPU
+        self.cuda_avgs = Parameter(self.avgs[img_ids].cuda(), requires_grad=True)
+        self.cuda_std_devs = Parameter(self.std_devs[img_ids].cuda(), requires_grad=True)
+
+        for j, img_id in enumerate(img_ids):
+            norm_x = torch.normal(mean=torch.zeros(1, self.no_of_patches, requires_grad=True), std=self.sigma * torch.ones(1, self.no_of_patches, requires_grad=True)).cuda()
+            norm_y = torch.normal(mean=torch.zeros(1, self.no_of_patches, requires_grad=True), std=self.sigma * torch.ones(1, self.no_of_patches, requires_grad=True)).cuda()
+
+            # torch.cuda.synchronize()
+
+            key_x = ((self.grid_dim-1)/2)*(torch.ones(self.no_of_patches, requires_grad=True).cuda() + torch.tanh((norm_x + self.cuda_avgs[j][0]) * self.cuda_std_devs[j][0]))
+            key_y = ((self.grid_dim-1)/2)*(torch.ones(self.no_of_patches, requires_grad=True).cuda() + torch.tanh((norm_y + self.cuda_avgs[j][1]) * self.cuda_std_devs[j][1]))
+
+            # TODO Play with tau the figure out the closest to true category
+            torch.nn.functional.gumbel_softmax(key_x.squeeze(dim=0), tau=0.5, hard=False, dim=0)
+
+            # torch.cuda.synchronize()#(device=)
+
+            key_x_1 = torch.ceil(key_x)
+            key_x_2 = torch.floor(key_x)
+            key_y_1 = torch.ceil(key_y)
+            key_y_2 = torch.floor(key_y)
+
+            # torch.cuda.synchronize()
+
+            key_index = [0,0,0,0]
+            key_index[0] = to_indices(self.grid_dim * key_y_1 + key_x_1)
+            key_index[1] = to_indices(self.grid_dim * key_y_1 + key_x_2)
+            key_index[2] = to_indices(self.grid_dim * key_y_2 + key_x_1)
+            key_index[3] = to_indices(self.grid_dim * key_y_2 + key_x_2)
+
+            # key_index = [to_indices(0),to_indices(0),to_indices(0),to_indices(0)]
+
+            # torch.cuda.synchronize()
+
+            sampled_keys = torch.stack((k[j][key_index[0]], k[j][key_index[1]], 
+                                        k[j][key_index[2]], k[j][key_index[3]])).transpose(dim0=0, dim1=1)#4 * 256 * 256
+            sampled_values = torch.stack((v[j][key_index[0]], v[j][key_index[1]], 
+                                          v[j][key_index[2]], v[j][key_index[3]])).transpose(dim0=0, dim1=1)#4 * 256 * 256
+            
+
+            # torch.cuda.synchronize()
+
+            # Lets add ones vector for class embedding
+
+
+            _, n_s, _, p_l = sampled_keys.shape
+            class_emb = to_device(torch.ones(1, n_s, 1, p_l), get_default_device())
+            sampled_keys = torch.cat((class_emb, sampled_keys), dim=2)
+            sampled_values = torch.cat((class_emb, sampled_values), dim=2)
+
+
+            # torch.cuda.synchronize()
+
+            attention_score = torch.matmul(sampled_keys.squeeze().transpose(dim0=0, dim1=1), q[j].unsqueeze(dim=2))
+            attention = self.temperature_att_sc * F.softmax(attention_score, dim=1).transpose(dim0=0, dim1=1) * sampled_values.squeeze(dim=0) 
+
+            # bilinear
+            sample = (key_x, key_y)
+            one = to_device(torch.ones(1), get_default_device())
+            bilinear_weighted_attention = \
+                        torch.cat((one.clone(), bilinear((0 , 0), sample).squeeze(dim=0)), dim=0).unsqueeze(dim=1) * attention[0]  + \
+                        torch.cat((one.clone(), bilinear((0 , 0), sample).squeeze(dim=0)), dim=0).unsqueeze(dim=1) * attention[1]  + \
+                        torch.cat((one.clone(), bilinear((0 , 0), sample).squeeze(dim=0)), dim=0).unsqueeze(dim=1) * attention[2]  + \
+                        torch.cat((one.clone(), bilinear((0 , 0), sample).squeeze(dim=0)), dim=0).unsqueeze(dim=1) * attention[3]
+            # bilinear_weighted_attention = \
+            #             torch.cat((one.clone(), bilinear((key_x_1 , key_y_1), sample).squeeze(dim=0)), dim=0).unsqueeze(dim=1) * attention[0]  + \
+            #             torch.cat((one.clone(), bilinear((key_x_2 , key_y_1), sample).squeeze(dim=0)), dim=0).unsqueeze(dim=1) * attention[1]  + \
+            #             torch.cat((one.clone(), bilinear((key_x_1 , key_y_2), sample).squeeze(dim=0)), dim=0).unsqueeze(dim=1) * attention[2]  + \
+            #             torch.cat((one.clone(), bilinear((key_x_2 , key_y_2), sample).squeeze(dim=0)), dim=0).unsqueeze(dim=1) * attention[3]
+
+            # torch.cuda.synchronize()
+            
+            att.append(bilinear_weighted_attention) 
+
+            # torch.cuda.synchronize()
+
+        return torch.stack(att)
+
+    # Trunc, one sample
+    def forward_trunc_one_sample(self, x, img_ids, mask):
+        """
+        x, q(query), k(key), v(value) : (B(batch_size), S(seq_len), D(dim))
+        mask : (B(batch_size) x S(seq_len))
+        * split D(dim) into (H(n_heads), W(width of head)) ; D = H * W
+        """
+        #Algo
+        """
+        1. Find patch index in x and y of the key we want for each query using normal dis
+
+        """
+        # (B, S, D) -proj-> (B, S, D) -split-> (B, S, H, W) -trans-> (B, H, S, W)
+        q, k, v = self.proj_q(x), self.proj_k(x), self.proj_v(x)
+        att = []
+
+        # Load on GPU
+        self.cuda_avgs = Parameter(self.avgs[img_ids].cuda(), requires_grad=True)
+        self.cuda_std_devs = Parameter(self.std_devs[img_ids].cuda(), requires_grad=True)
+
+        for j, img_id in enumerate(img_ids):
+            norm_x = torch.normal(mean=torch.zeros(1, self.no_of_patches, requires_grad=True), std=self.sigma * torch.ones(1, self.no_of_patches, requires_grad=True)).cuda()
+            norm_y = torch.normal(mean=torch.zeros(1, self.no_of_patches, requires_grad=True), std=self.sigma * torch.ones(1, self.no_of_patches, requires_grad=True)).cuda()
+
+            # torch.cuda.synchronize()
+
+            key_x = ((self.grid_dim-1)/2)*(torch.ones(self.no_of_patches, requires_grad=True).cuda() + torch.tanh((norm_x + self.cuda_avgs[j][0]) * self.cuda_std_devs[j][0]))
+            key_y = ((self.grid_dim-1)/2)*(torch.ones(self.no_of_patches, requires_grad=True).cuda() + torch.tanh((norm_y + self.cuda_avgs[j][1]) * self.cuda_std_devs[j][1]))
+
+            key_x = key_x.type(torch.int64)            
+            key_y = key_y.type(torch.int64)
+
+            # torch.cuda.synchronize()
+
+            sampled_key = k[j][to_indices(self.grid_dim * key_y + key_x)]
+            sampled_value = v[j][to_indices(self.grid_dim * key_y + key_x)]
+
+            
+
+            # torch.cuda.synchronize()
+
+            # Lets add ones vector for class embedding
+            _, _, k_dim = sampled_key.shape
+            class_emb = to_device(torch.ones(1, 1, k_dim), get_default_device())
+            sampled_key = torch.cat((class_emb, sampled_key), dim=1)
+            sampled_value = torch.cat((class_emb, sampled_value), dim=1)
+
+            # torch.cuda.synchronize()
+
+            att_score = torch.matmul(sampled_key.transpose(dim0=0, dim1=1), q[j].unsqueeze(dim=2))
+            # full_att = F.softmax(at_sc, dim=1).transpose(dim0=0, dim1=1) * sampled_value.squeeze(dim=0)
+            # full_att = att_score.transpose(dim0=0, dim1=1) * sampled_value.squeeze(dim=0) 
+            # full_att = att_score.transpose(dim0=0, dim1=1) * sampled_value.squeeze(dim=0) 
+            full_att = self.temperature_att_sc *  torch.sigmoid(att_score).transpose(dim0=0, dim1=1) * sampled_value.squeeze(dim=0) 
+
+            # torch.cuda.synchronize()
+            
+            att.append(torch.sum(full_att, dim=0)) 
+
+            # torch.cuda.synchronize()
+
+        return torch.stack(att)
+
+
+    def forward_bilin_before_optimized(self, x, img_ids, mask):
+        """
+        x, q(query), k(key), v(value) : (B(batch_size), S(seq_len), D(dim))
+        mask : (B(batch_size) x S(seq_len))
+        * split D(dim) into (H(n_heads), W(width of head)) ; D = H * W
+        """
+        #Algo
+        """
+        1. Find patch index in x and y of the key we want for each query using normal dis
+
+        """
+        # (B, S, D) -proj-> (B, S, D) -split-> (B, S, H, W) -trans-> (B, H, S, W)
+        q, k, v = self.proj_q(x), self.proj_k(x), self.proj_v(x)
+        att = [] # TODO : Rename as out
+        
+        """
+        Maybe this 
+        """
+        # Load on GPU
+        self.cuda_avgs = Parameter(self.avgs[img_ids].cuda(), requires_grad=True)
+        self.cuda_std_devs = Parameter(self.std_devs[img_ids].cuda(), requires_grad=True)
+
+        for j, img_id in enumerate(img_ids): #TODO Remove for loop
+            norm_x = torch.normal(mean=torch.zeros(1, self.no_of_patches, requires_grad=True), std=self.sigma * torch.ones(1, self.no_of_patches, requires_grad=True)).cuda()
+            norm_y = torch.normal(mean=torch.zeros(1, self.no_of_patches, requires_grad=True), std=self.sigma * torch.ones(1, self.no_of_patches, requires_grad=True)).cuda()
+
+            # torch.cuda.synchronize()# TODO Use bilien from pytorch
+
+            key_x = ((self.grid_dim-1)/2)*(torch.ones(self.no_of_patches, requires_grad=True).cuda() + torch.tanh((norm_x + self.cuda_avgs[j][0]) * self.cuda_std_devs[j][0]))
+            key_y = ((self.grid_dim-1)/2)*(torch.ones(self.no_of_patches, requires_grad=True).cuda() + torch.tanh((norm_y + self.cuda_avgs[j][1]) * self.cuda_std_devs[j][1]))
+
+            # torch.cuda.synchronize()#(device=)
+
+            key_x_1 = torch.ceil(key_x)
+            key_x_2 = torch.floor(key_x)
+            key_y_1 = torch.ceil(key_y)
+            key_y_2 = torch.floor(key_y)
+
+            # torch.cuda.synchronize()
+
+            key_index = [0,0,0,0]
+            key_index[0] = to_indices(self.grid_dim * key_y_1 + key_x_1)
+            key_index[1] = to_indices(self.grid_dim * key_y_1 + key_x_2)
+            key_index[2] = to_indices(self.grid_dim * key_y_2 + key_x_1)
+            key_index[3] = to_indices(self.grid_dim * key_y_2 + key_x_2)
+
+            # torch.cuda.synchronize()
+
+            sampled_keys = torch.stack((k[j][key_index[0]], k[j][key_index[1]], 
+                                        k[j][key_index[2]], k[j][key_index[3]])).transpose(dim0=0, dim1=1)#4 * 256 * 256
+            sampled_values = torch.stack((v[j][key_index[0]], v[j][key_index[1]], 
+                                          v[j][key_index[2]], v[j][key_index[3]])).transpose(dim0=0, dim1=1)#4 * 256 * 256
+            
+
+            sampled_key = bilinear(keys, grid)
+            sampled_values = bilinear(values, grid)
+
+
+            # torch.cuda.synchronize()
+
+            # Lets add ones vector for class embedding
+
+
+            _, n_s, _, p_l = sampled_keys.shape
+            class_emb = to_device(torch.ones(1, n_s, 1, p_l), get_default_device())
+            sampled_keys = torch.cat((class_emb, sampled_keys), dim=2)
+            sampled_values = torch.cat((class_emb, sampled_values), dim=2)
+
+
+            # torch.cuda.synchronize()
+
+            attention_score = torch.matmul(sampled_keys.squeeze().transpose(dim0=0, dim1=1), q[j].unsqueeze(dim=2))
+            attention = self.temperature_att_sc * F.softmax(attention_score, dim=1).transpose(dim0=0, dim1=1) * sampled_values.squeeze(dim=0) 
+
+            # bilinear
+            sample = (key_x, key_y)
+            one = to_device(torch.ones(1), get_default_device())
+            bilinear_weighted_attention = \
+                        torch.cat((one.clone(), bilinear((key_x_1 , key_y_1), sample).squeeze(dim=0)), dim=0).unsqueeze(dim=1) * attention[0]  + \
+                        torch.cat((one.clone(), bilinear((key_x_2 , key_y_1), sample).squeeze(dim=0)), dim=0).unsqueeze(dim=1) * attention[1]  + \
+                        torch.cat((one.clone(), bilinear((key_x_1 , key_y_2), sample).squeeze(dim=0)), dim=0).unsqueeze(dim=1) * attention[2]  + \
+                        torch.cat((one.clone(), bilinear((key_x_2 , key_y_2), sample).squeeze(dim=0)), dim=0).unsqueeze(dim=1) * attention[3]
+
+            # torch.cuda.synchronize()
+            
+            att.append(bilinear_weighted_attention) 
+
+            # torch.cuda.synchronize()
+
+        return torch.stack(att)
+    
+    def forward_no_loop(self, x, img_ids, mask):
+        """
+        x, q(query), k(key), v(value) : (B(batch_size), S(seq_len), D(dim))
+        mask : (B(batch_size) x S(seq_len))
+        * split D(dim) into (H(n_heads), W(width of head)) ; D = H * W
+        """
+        #Algo
+        """
+        1. Find patch index in x and y of the key we want for each query using normal dis
+
+        """
+        # (B, S, D) -proj-> (B, S, D) -split-> (B, S, H, W) -trans-> (B, H, S, W)
+        q, k, v = self.proj_q(x), self.proj_k(x), self.proj_v(x)
+        batch_size, _, dim = x.shape
+        att = []
+
+        # Load on GPU
+        self.cuda_avgs = Parameter(self.avgs[img_ids].cuda(), requires_grad=True,)
+        self.cuda_std_devs = Parameter(self.std_devs[img_ids].cuda(), requires_grad=True)
+
+        norm_x = torch.normal(mean=torch.zeros(batch_size, 1, self.no_of_patches, requires_grad=True), std=self.sigma * torch.ones(1, self.no_of_patches, requires_grad=True)).cuda()
+        norm_y = torch.normal(mean=torch.zeros(batch_size, 1, self.no_of_patches, requires_grad=True), std=self.sigma * torch.ones(1, self.no_of_patches, requires_grad=True)).cuda()
+        
+        avg_b, _, avg_amnt = self.cuda_avgs.shape
+        avgs_x = torch.tensor_split(self.cuda_avgs, avg_amnt, dim=1)[0]
+        avgs_y = torch.tensor_split(self.cuda_avgs, avg_amnt, dim=1)[1]
+        stds_x = torch.tensor_split(self.cuda_std_devs, avg_amnt, dim=1)[0]
+        stds_y = torch.tensor_split(self.cuda_std_devs, avg_amnt, dim=1)[1]
+        
+        sample_x = torch.tanh((norm_x + avgs_x) * stds_x)
+        sample_y = torch.tanh((norm_y + avgs_y) * stds_y)
+
+        grid_dim = int(self.grid_dim)
+        grid = torch.reshape(torch.cat((sample_x, sample_y), dim=1), (batch_size, grid_dim, grid_dim, 2))
+
+        # k_ce = k[0:batch_size, :1, :] # Class embeddings, not used, figure out later what to do
+        # v_ce = v[0:batch_size, :1, :]
+        k = k[0:batch_size, 1:, :]
+        v = v[0:batch_size, 1:, :]
+
+        k_input = torch.reshape(torch.transpose(k, dim0=1, dim1=2), (batch_size, dim, grid_dim, grid_dim))
+        v_input = torch.reshape(torch.transpose(v, dim0=1, dim1=2), (batch_size, dim, grid_dim, grid_dim))
+
+        sampled_key = F.grid_sample(k_input, grid, mode='bilinear', padding_mode='zeros')
+        sampled_value = F.grid_sample(v_input, grid, mode='bilinear', padding_mode='zeros')
+
+        # Swap back
+        sampled_key = torch.transpose(torch.reshape(sampled_key, (batch_size, dim, grid_dim * grid_dim)), dim0=1, dim1=2)
+        sampled_value = torch.transpose(torch.reshape(sampled_value, (batch_size, dim, grid_dim * grid_dim)), dim0=1, dim1=2)
+
+        class_embedding = to_device(torch.ones(batch_size, 1, dim), get_default_device())
+        sampled_key = torch.cat((class_embedding, sampled_key), dim=1)
+        sampled_value = torch.cat((class_embedding, sampled_value), dim=1)
+
+        attention_scores = torch.sum(sampled_key * q, dim=-1)
+        attention = torch.sigmoid(self.temperature_att_sc * attention_scores).unsqueeze(dim=2) * sampled_value
+
+        return attention
+    
+    def forward(self, x, img_ids, mask):
+
+        return self.forward_no_loop(x, img_ids, mask)
+    
 
 class PositionWiseFeedForward(nn.Module):
     """FeedForward Neural Networks for each position"""
