@@ -245,8 +245,6 @@ class Transformer(nn.Module):
 
          
 
-
-
     def log_gaussian(self, debug=True, no_of_imgs=3):
         for i in range(no_of_imgs):
             if debug:
