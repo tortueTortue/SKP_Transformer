@@ -18,7 +18,6 @@ from pytorch_pretrained_vit import ViT
 
 
 if __name__ == '__main__':
-    # TODO Add as config
     project_name = "SKP_Transformer"
     # model_dir = f"/home/tortue/projects/def-mpederso/tortue/beluga/{project_name}/models/trained_models/"
     model_dir = f"E:/Git/{project_name}/models/trained_models/"
@@ -48,7 +47,7 @@ if __name__ == '__main__':
     stochViTSigma01 = StochViT(num_classes=10, no_of_imgs_for_training=50000, image_size=256, sigma=0.1)
     stochViTSigma05 = StochViT(num_classes=10, no_of_imgs_for_training=50000, image_size=256, sigma=0.5)
 
- # TODO Update training configs with and without ids
+
  #   
 
 

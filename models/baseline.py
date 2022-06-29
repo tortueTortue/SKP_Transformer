@@ -80,7 +80,6 @@ def evaluate(model: nn.Module, val_set: DataLoader):
 def train(epochs_no, model: nn.Module, train_set: DataLoader, val_set: DataLoader):
     history = []
     
-    # TODO Read about optimizer optimizer = opt_func(model.parameters(), lr)
     
     for epoch in range(epochs_no):
         """  Training Phase """ 

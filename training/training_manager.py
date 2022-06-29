@@ -1,6 +1,7 @@
 """
 Here are the training methods.
 """
+from distutils.log import debug
 from pyclbr import Function
 from statistics import mode
 from models.skp_vit import StochViT
@@ -12,24 +13,20 @@ import torch
 import time
 
 from training.utils.utils import batches_to_device, get_default_device, to_device, save_checkpoints
-from training.metrics.metrics import accuracy, count_model_parameters
+from training.metrics.metrics import accuracy, print_accuracy_per_class, print_accuracy, count_model_parameters
 from training.utils.logger import start_training_logging
 from datetime import datetime
-
+from training.utils.utils import save_model, load_model
 
 from optimizer.sam.sam import SAM
 
 
-# TODO : Add configs for this one
-PATH = ""
-
 def end_of_epoch_routine(model=None):
-    print("test")
     pass
 
-def validation_step(model, batch, with_indexes: bool = False):
+def validation_step(model, batch, with_indices: bool = False):
     images, labels, i = batch
-    if with_indexes:
+    if with_indices:
         images, labels, i = images.cuda(), labels.cuda(), i.cuda()
         out = model.forward(images, i)
     else :
@@ -40,8 +37,8 @@ def validation_step(model, batch, with_indexes: bool = False):
 
     return {'val_loss': val_loss.detach(), 'val_acc': accuracy(out, labels)}
 
-def evaluate(model: Module, val_set: DataLoader, epoch: int, with_indexes: bool = False):
-    outputs = [validation_step(model, batch, with_indexes) for batch in val_set]
+def evaluate(model: Module, val_set: DataLoader, epoch: int, with_indices: bool = False):
+    outputs = [validation_step(model, batch, with_indices) for batch in val_set]
 
     batch_losses = [x['val_loss'] for x in outputs]
     epoch_loss = torch.stack(batch_losses).mean()
@@ -49,13 +46,14 @@ def evaluate(model: Module, val_set: DataLoader, epoch: int, with_indexes: bool 
     epoch_acc = torch.stack(batch_accs).mean()
     return {'val_loss': epoch_loss.item(), 'val_acc': epoch_acc.item(), 'epoch' : epoch}
 
-def train(epochs_no: int,  #TODO Add debug option
+def train(epochs_no: int,
           model: Module,
           train_set: DataLoader,
           val_set: DataLoader, model_dir,
           logger, lr, with_sam_opt: bool = False,
-          with_indexes: bool = False, 
-          end_of_epoch_routine: Function = end_of_epoch_routine):
+          with_indices: bool = False, 
+          end_of_epoch_routine: Function = end_of_epoch_routine,
+          debug: bool = False):
     loss = CrossEntropyLoss()
     history = []
 
@@ -64,7 +62,7 @@ def train(epochs_no: int,  #TODO Add debug option
     else:
         optimizer = SGD(model.parameters(), lr=0.0001, momentum=0.9)
 
-    if True: # add debug var
+    if debug:
         from torch.utils.tensorboard import SummaryWriter
         writer = SummaryWriter(f'runs/debug/{model.__class__.__name__}-{datetime.now().strftime("%m-%d-%Y-%H-%M-%S")}')
         im, _, ids = next(iter(train_set))
@@ -80,19 +78,14 @@ def train(epochs_no: int,  #TODO Add debug option
         for batch_index, batch in enumerate(train_set):
             optimizer.zero_grad()
             inputs, labels, indexes = batch
-            if with_indexes:
+            if with_indices:
                 inputs, labels, indexes = inputs.cuda(), labels.cuda(), indexes.cuda()
-                # TODO try with this forward call
-                curr_loss = loss(model(inputs, indexes), labels) #--> model.forward(inputs, indexes)
+                curr_loss = loss(model(inputs, indexes), labels)
             else:
                 inputs, labels = inputs.cuda(), labels.cuda()
                 curr_loss = loss(model(inputs), labels)
 
             curr_loss.backward()
-
-            # TODO ADD PARAM
-            # if True:
-            #     model.compute_gradients(curr_loss, indexes)
 
             if with_sam_opt:
                 optimizer.first_step(zero_grad=True)
@@ -103,30 +96,12 @@ def train(epochs_no: int,  #TODO Add debug option
             else:
                 optimizer.step()
 
-            #TODO Remove self.avgs[img_id][0] and self.std_devs[img_id][1] from GPU
-
-            # TODO: A voir
-            if  with_indexes:
-                model.propagate_attention(lr, indexes, None)
-
-            if True and batch_index == (len(train_set)-1): # add debug var
-                writer.add_scalar("Gradient Sum/First Transformer Block/ First img/ Avg / Grad", model.transformer.blocks[0].attn.cuda_avgs.grad.sum(), epoch)
-                writer.add_scalar("Gradient Sum/First Transformer Block/ First img/ Std_Dev / Grad", model.transformer.blocks[0].attn.cuda_std_devs.grad.sum(), epoch)
-              
-                last_block = len(model.transformer.blocks) - 1
-                writer.add_scalar("Gradient Sum/Last Transformer Block/ First img/ Avg / Grad", model.transformer.blocks[last_block].attn.cuda_avgs.grad.sum(), epoch)
-                writer.add_scalar("Gradient Sum/Last Transformer Block/ First img/ Std_Dev / Grad", model.transformer.blocks[last_block].attn.cuda_std_devs.grad.sum(), epoch)
-                
-                writer.add_scalar("Gradient Sum/First pwff.fc1/ First img/ Avg / Grad", model.transformer.blocks[0].pwff.fc1.weight.grad.sum(), epoch)
-                writer.add_scalar("Gradient Sum/Last pwff.fc1/ First img/ Std_Dev / Grad", model.transformer.blocks[last_block].pwff.fc1.weight.grad.sum(), epoch)
-
-        #TODO Add end of epoch callback
-        end_of_epoch_routine(model=model)
-        model.transformer.log_gaussian()
+            if end_of_epoch_routine:
+                end_of_epoch_routine(model=model)
 
 
         """ Validation Phase """
-        result = evaluate(model, val_set, epoch, with_indexes)
+        result = evaluate(model, val_set, epoch, with_indices)
         print(result)
         print(f"Training time for {epoch} : {time.time() - start_time}")
         history.append(result)
@@ -140,7 +115,16 @@ def train(epochs_no: int,  #TODO Add debug option
 
     return history
 
-def train_model(epochs_no: int, model_to_train: Module, model_name: str, dataset: Dataset, batch_size: int, model_dir: str, with_sam_opt=False, with_indexes=False):
+def train_model(epochs_no: int,
+                model_to_train: Module,
+                model_name: str,
+                dataset: Dataset,
+                batch_size: int,
+                model_dir: str,
+                with_sam_opt: bool=False,
+                with_indices: bool=False,
+                end_of_epoch_routine: Function=None,
+                learning_rate = 0.0001):
     model_to_train.train()
     device = get_default_device()
     logger = start_training_logging(model_name)
@@ -151,20 +135,40 @@ def train_model(epochs_no: int, model_to_train: Module, model_name: str, dataset
     batches_to_device(val_loader, device)
     batches_to_device(test_loader, device)
 
-    # TODO CLEAN UP THIS< VERY BAD PRACTICE
-    if isinstance(model_to_train, StochViT):
-        print("Loading ViT")
-        model_to_train.load_on_gpu()
-        model = model_to_train
-    else:
-        model = to_device(model_to_train, device) # TODO Add except param avg std
+    model = to_device(model_to_train, device)
 
-    
-
-    lr = 0.0001
     print(f"Parameter count {count_model_parameters(model_to_train, False)}")
     start_time = time.time()
-    history = train(epochs_no, model, train_loader, val_loader, model_dir, logger, lr, with_sam_opt=with_sam_opt, with_indexes=with_indexes)
+    history = train(epochs_no, model, train_loader, val_loader, model_dir, logger, learning_rate, with_sam_opt=with_sam_opt, with_indices=with_indices, end_of_epoch_routine=end_of_epoch_routine)
     print(f"Training time for {epochs_no} epochs : {time.time() - start_time}")
 
     return model
+
+
+def train_and_test_model(classes: list,
+                         model: Module,
+                         dataset: Dataset,
+                         epochs: int,
+                         config,
+                         end_of_epoch_routine: Function = None):
+    model_name=config['model_name']
+    model_dir=config['model_dir']
+    batch_size=config['hyperparameters']['batch_size']
+    epochs=config['hyperparameters']['epochs']
+    with_indices=config['dataset_with_indices']
+    with_sam_opt=config['with_sam_opt']
+    debug=config['debug']
+    learning_rate=config['hyperparameters']['learning_rate']
+
+    print(f"*********************************Training {model_name}*********************************")
+    print(f"Parameters {count_model_parameters(model, False)}")
+    start_time = time.time()
+    trained_model = train_model(epochs, model, "model_name", dataset, batch_size,
+                                model_dir, with_indices=with_indices, with_sam_opt=with_sam_opt,
+                                learning_rate=learning_rate, debug=debug, end_of_epoch_routine=end_of_epoch_routine)
+    save_model(trained_model, "model_name", model_dir)
+    model = load_model(f"{model_dir}/{model_name}.pt")
+    print(f"Training time for {epochs} epochs : {time.time() - start_time}")
+    print(f"*********************************Testing  {model_name}*********************************")
+    print_accuracy_per_class(model, classes, batch_size, dataset.test_loader)
+    print_accuracy(model, classes, batch_size, dataset.test_loader)
