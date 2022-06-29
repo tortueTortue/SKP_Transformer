@@ -1,0 +1,15 @@
+{
+    "project_name": "SKP_Transformer",
+    "model_directory": "E:/Git/SKP_Transformer/models/trained_models",
+    "model_name": "Stoch_ViT_V2",
+    "checkpoint_dir": "E:/Git/SKP_Transformer/training/checkpoints/checkpoint_Stoch_ViT_V2.pt",
+    "hyperparameters":
+        {
+            "batch_size": 2,
+            "epochs": 100,
+            "learning_rate": 0.0001
+        },
+    "dataset_with_indices" : false,
+    "with_sam_opt" : false,
+    "debug" : false
+}
