@@ -2,7 +2,7 @@
     "project_name": "SKP_Transformer",
     "model_directory": "E:/Git/SKP_Transformer/models/trained_models",
     "model_name": "Stoch_ViT_V2",
-    "checkpoint_dir": "E:/Git/SKP_Transformer/training/checkpoints/checkpoint_Stoch_ViT_V2.pt",
+    "checkpoint_dir": "E:/Git/SKP_Transformer/training/checkpoints/",
     "hyperparameters":
         {
             "batch_size": 2,
