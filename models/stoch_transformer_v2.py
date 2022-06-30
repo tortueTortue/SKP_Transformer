@@ -122,7 +122,7 @@ class StochSelfAttention(nn.Module):
 
     def forward(self, x, mask):
 
-        return self.forward_grid_sample(x)
+        return self.grid_sample_forward(x)
 
         # return self.bilinear_forward(x)
     
