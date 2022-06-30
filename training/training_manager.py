@@ -111,7 +111,7 @@ def train(epochs_no: int,
 
         logger.info(str(result))
         if epoch % 10 == 0 :
-            save_checkpoints(epoch, model, optimizer, loss, model_dir + f"checkpoint_{epoch}_{type(model).__name__}.pt")
+            save_checkpoints(epoch, model, optimizer, loss, model_dir + f"/checkpoint_{epoch}_{type(model).__name__}.pt")
     if debug:
         writer.flush()
         writer.close()
