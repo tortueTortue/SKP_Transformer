@@ -70,7 +70,7 @@ def train(epochs_no: int,
         import torchvision
         grid = torchvision.utils.make_grid(im)
         writer.add_image('images', grid, 0)
-        writer.close()
+        
 
     for epoch in range(epochs_no):
         start_time = time.time()
@@ -105,13 +105,16 @@ def train(epochs_no: int,
         print(result)
         print(f"Training time for {epoch} : {time.time() - start_time}")
         history.append(result)
-        writer.add_scalar("Loss/val", result['val_loss'], epoch)
-        writer.add_scalar("Accuracy/val", result['val_acc'], epoch)
+        if debug:
+            writer.add_scalar("Loss/val", result['val_loss'], epoch)
+            writer.add_scalar("Accuracy/val", result['val_acc'], epoch)
 
         logger.info(str(result))
         if epoch % 10 == 0 :
             save_checkpoints(epoch, model, optimizer, loss, model_dir + f"checkpoint_{epoch}_{type(model).__name__}.pt")
-    writer.flush()
+    if debug:
+        writer.flush()
+        writer.close()
 
     return history
 
@@ -124,7 +127,8 @@ def train_model(epochs_no: int,
                 with_sam_opt: bool=False,
                 with_indices: bool=False,
                 end_of_epoch_routine: Function=None,
-                learning_rate = 0.0001):
+                learning_rate = 0.0001,
+                debug: bool= False):
     model_to_train.train()
     device = get_default_device()
     logger = start_training_logging(model_name)
@@ -139,7 +143,7 @@ def train_model(epochs_no: int,
 
     print(f"Parameter count {count_model_parameters(model_to_train, False)}")
     start_time = time.time()
-    history = train(epochs_no, model, train_loader, val_loader, model_dir, logger, learning_rate, with_sam_opt=with_sam_opt, with_indices=with_indices, end_of_epoch_routine=end_of_epoch_routine)
+    history = train(epochs_no, model, train_loader, val_loader, model_dir, logger, learning_rate, with_sam_opt=with_sam_opt, with_indices=with_indices, end_of_epoch_routine=end_of_epoch_routine, debug=debug)
     print(f"Training time for {epochs_no} epochs : {time.time() - start_time}")
 
     return model
@@ -148,11 +152,10 @@ def train_model(epochs_no: int,
 def train_and_test_model(classes: list,
                          model: Module,
                          dataset: Dataset,
-                         epochs: int,
                          config,
                          end_of_epoch_routine: Function = None):
     model_name=config['model_name']
-    model_dir=config['model_dir']
+    model_dir=config['model_directory']
     batch_size=config['hyperparameters']['batch_size']
     epochs=config['hyperparameters']['epochs']
     with_indices=config['dataset_with_indices']

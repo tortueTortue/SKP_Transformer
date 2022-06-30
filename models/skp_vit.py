@@ -7,7 +7,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from models.stoch_transformer import Transformer
+from models.stoch_transformer_v2 import Transformer
 
 from training.utils.utils import get_default_device, to_device
 
@@ -86,7 +86,7 @@ class StochViT(nn.Module):
         
         #TODO:  Stochastic Transformer
         self.transformer = Transformer(num_layers=num_layers, dim=dim, num_heads=num_heads, 
-                                       ff_dim=ff_dim, dropout=dropout_rate, no_of_imgs_for_training = no_of_imgs_for_training, sigma=sigma)
+                                       ff_dim=ff_dim, dropout=dropout_rate, no_of_imgs_for_training = no_of_imgs_for_training)
         
         # Representation layer
         if representation_size and load_repr_layer:
@@ -116,7 +116,7 @@ class StochViT(nn.Module):
         nn.init.normal_(self.positional_embedding.pos_embedding, std=0.02)  # _trunc_normal(self.positional_embedding.pos_embedding, std=0.02)
         nn.init.constant_(self.class_token, 0)
 
-    def forward(self, x, ids):
+    def forward(self, x):
         """Breaks image into patches, applies transformer, applies MLP head.
 
         Args:
@@ -129,7 +129,7 @@ class StochViT(nn.Module):
             x = torch.cat((self.class_token.expand(b, -1, -1), x), dim=1)  # b,gh*gw+1,d
         if hasattr(self, 'positional_embedding'): 
             x = self.positional_embedding(x)  # b,gh*gw+1,d 
-        x = self.transformer(x, ids)  # b,gh*gw+1,d
+        x = self.transformer(x)  # b,gh*gw+1,d
         if hasattr(self, 'pre_logits'):
             x = self.pre_logits(x)
             x = torch.tanh(x)
@@ -137,37 +137,3 @@ class StochViT(nn.Module):
             x = self.norm(x)[:, 0]  # b,d
             x = self.fc(x)  # b,num_classes
         return x
-
-    def propagate_attention(self, lr, indexes, momentum):
-        self.transformer.propagate_attention(lr, indexes, momentum)
-
-    def compute_gradients(self, loss, indexes):
-        self.transformer.compute_gradients(loss, indexes)
-
-    # TODO : Reimplement this, VERY BAD PRACTICE
-    def load_on_gpu(self):
-        device = get_default_device()
-        
-
-        to_device(self.patch_embedding, device) 
-        to_device(self.class_token, device) #TODO For soe reason class token ot put on cuda
-        to_device(self.positional_embedding, device) # TODO Try with non-blcoking set to false
-        self.class_token.to()
-        if hasattr(self, 'pre_logits'):
-            to_device(self.pre_logits, device)
-        to_device(self.norm, device)
-        to_device(self.fc, device)
-
-
-        for block in self.transformer.blocks:
-            to_device(block.drop, device)
-            to_device(block.proj, device)
-            to_device(block.norm1, device)
-            to_device(block.drop, device)
-            to_device(block.pwff, device)
-            to_device(block.norm2, device)
-
-            to_device(block.attn.proj_q, device)
-            to_device(block.attn.proj_k, device)
-            to_device(block.attn.proj_v, device)
-            to_device(block.attn.drop, device)
