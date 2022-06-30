@@ -20,10 +20,6 @@ from training.utils.utils import save_model, load_model
 
 from optimizer.sam.sam import SAM
 
-
-def end_of_epoch_routine(model=None):
-    pass
-
 def validation_step(model, batch, with_indices: bool = False):
     images, labels, i = batch
     if with_indices:
@@ -52,7 +48,7 @@ def train(epochs_no: int,
           val_set: DataLoader, model_dir,
           logger, lr, with_sam_opt: bool = False,
           with_indices: bool = False, 
-          end_of_epoch_routine: Function = end_of_epoch_routine,
+          end_of_epoch_routine: Function = None,
           debug: bool = False):
     loss = CrossEntropyLoss()
     history = []
@@ -66,7 +62,7 @@ def train(epochs_no: int,
         from torch.utils.tensorboard import SummaryWriter
         writer = SummaryWriter(f'runs/debug/{model.__class__.__name__}-{datetime.now().strftime("%m-%d-%Y-%H-%M-%S")}')
         im, _, ids = next(iter(train_set))
-        # writer.add_graph(model, (im.cuda(), ids.cuda()), verbose=True)
+        writer.add_graph(model, (im.cuda(), ids.cuda()), verbose=True)
         import torchvision
         grid = torchvision.utils.make_grid(im)
         writer.add_image('images', grid, 0)
