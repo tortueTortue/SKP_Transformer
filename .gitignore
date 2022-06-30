@@ -135,3 +135,4 @@ data/*.tar.gz
 runs/*
 
 models/trained_models/*
+training/checkpoints/*

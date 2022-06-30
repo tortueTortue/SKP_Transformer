@@ -45,7 +45,8 @@ def evaluate(model: Module, val_set: DataLoader, epoch: int, with_indices: bool 
 def train(epochs_no: int,
           model: Module,
           train_set: DataLoader,
-          val_set: DataLoader, model_dir,
+          val_set: DataLoader,
+          checkpoint_dir: str,
           logger, lr, with_sam_opt: bool = False,
           with_indices: bool = False, 
           end_of_epoch_routine: Function = None,
@@ -107,7 +108,7 @@ def train(epochs_no: int,
 
         logger.info(str(result))
         if epoch % 10 == 0 :
-            save_checkpoints(epoch, model, optimizer, loss, model_dir + f"/checkpoint_{epoch}_{type(model).__name__}.pt")
+            save_checkpoints(epoch, model, optimizer, loss, checkpoint_dir + f"/checkpoint_{epoch}_{type(model).__name__}.pt")
     if debug:
         writer.flush()
         writer.close()
@@ -119,7 +120,7 @@ def train_model(epochs_no: int,
                 model_name: str,
                 dataset: Dataset,
                 batch_size: int,
-                model_dir: str,
+                checkpoint_dir: str,
                 with_sam_opt: bool=False,
                 with_indices: bool=False,
                 end_of_epoch_routine: Function=None,
@@ -139,7 +140,7 @@ def train_model(epochs_no: int,
 
     print(f"Parameter count {count_model_parameters(model_to_train, False)}")
     start_time = time.time()
-    history = train(epochs_no, model, train_loader, val_loader, model_dir, logger, learning_rate, with_sam_opt=with_sam_opt, with_indices=with_indices, end_of_epoch_routine=end_of_epoch_routine, debug=debug)
+    history = train(epochs_no, model, train_loader, val_loader, checkpoint_dir, logger, learning_rate, with_sam_opt=with_sam_opt, with_indices=with_indices, end_of_epoch_routine=end_of_epoch_routine, debug=debug)
     print(f"Training time for {epochs_no} epochs : {time.time() - start_time}")
 
     return model
@@ -152,6 +153,7 @@ def train_and_test_model(classes: list,
                          end_of_epoch_routine: Function = None):
     model_name=config['model_name']
     model_dir=config['model_directory']
+    checkpoint_dir=config['checkpoint_dir']
     batch_size=config['hyperparameters']['batch_size']
     epochs=config['hyperparameters']['epochs']
     with_indices=config['dataset_with_indices']
@@ -163,7 +165,7 @@ def train_and_test_model(classes: list,
     print(f"Parameters {count_model_parameters(model, False)}")
     start_time = time.time()
     trained_model = train_model(epochs, model, "model_name", dataset, batch_size,
-                                model_dir, with_indices=with_indices, with_sam_opt=with_sam_opt,
+                                checkpoint_dir=checkpoint_dir, with_indices=with_indices, with_sam_opt=with_sam_opt,
                                 learning_rate=learning_rate, debug=debug, end_of_epoch_routine=end_of_epoch_routine)
     save_model(trained_model, "model_name", model_dir)
     model = load_model(f"{model_dir}/{model_name}.pt")
