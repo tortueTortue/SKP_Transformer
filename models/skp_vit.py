@@ -74,7 +74,8 @@ class StochViT(nn.Module):
         self.patch_embedding = nn.Conv2d(in_channels, dim, kernel_size=(fh, fw), stride=(fh, fw))
 
         # Class token
-        if classifier == 'token':
+        if False: # TODO Fix this
+        # if classifier == 'token':
             self.class_token = nn.Parameter(torch.zeros(1, 1, dim, device='cuda'))
             seq_len += 1
         
@@ -114,7 +115,7 @@ class StochViT(nn.Module):
         nn.init.constant_(self.fc.weight, 0)
         nn.init.constant_(self.fc.bias, 0)
         nn.init.normal_(self.positional_embedding.pos_embedding, std=0.02)  # _trunc_normal(self.positional_embedding.pos_embedding, std=0.02)
-        nn.init.constant_(self.class_token, 0)
+        # nn.init.constant_(self.class_token, 0)  # TODO Fix this
 
     def forward(self, x):
         """Breaks image into patches, applies transformer, applies MLP head.
@@ -125,7 +126,8 @@ class StochViT(nn.Module):
         b, c, fh, fw = x.shape
         x = self.patch_embedding(x)  # b,d,gh,gw
         x = x.flatten(2).transpose(1, 2)  # b,gh*gw,d
-        if hasattr(self, 'class_token'):
+        if False:
+        # if hasattr(self, 'class_token'): # TODO Fix this
             x = torch.cat((self.class_token.expand(b, -1, -1), x), dim=1)  # b,gh*gw+1,d
         if hasattr(self, 'positional_embedding'): 
             x = self.positional_embedding(x)  # b,gh*gw+1,d 
