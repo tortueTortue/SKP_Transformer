@@ -79,7 +79,6 @@ class GaussianSelfAttention(nn.Module):
         # (B, S, D) -proj-> (B, S, D) -split-> (B, S, H, W) -trans-> (B, H, S, W)
         q, k, v = self.proj_q(x), self.proj_k(x), self.proj_v(x)
         batch_size, _, dim = x.shape
-        att = []
 
         # Load on GPU
         self.cuda_avgs = Parameter(self.avgs[img_ids].cuda(), requires_grad=True,)

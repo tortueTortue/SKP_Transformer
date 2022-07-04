@@ -20,10 +20,6 @@ from training.utils.utils import save_model, load_model
 
 from optimizer.sam.sam import SAM
 
-
-def end_of_epoch_routine(model=None):
-    pass
-
 def validation_step(model, batch, with_indices: bool = False):
     images, labels, i = batch
     if with_indices:
@@ -49,10 +45,11 @@ def evaluate(model: Module, val_set: DataLoader, epoch: int, with_indices: bool 
 def train(epochs_no: int,
           model: Module,
           train_set: DataLoader,
-          val_set: DataLoader, model_dir,
+          val_set: DataLoader,
+          checkpoint_dir: str,
           logger, lr, with_sam_opt: bool = False,
           with_indices: bool = False, 
-          end_of_epoch_routine: Function = end_of_epoch_routine,
+          end_of_epoch_routine: Function = None,
           debug: bool = False):
     loss = CrossEntropyLoss()
     history = []
@@ -66,11 +63,11 @@ def train(epochs_no: int,
         from torch.utils.tensorboard import SummaryWriter
         writer = SummaryWriter(f'runs/debug/{model.__class__.__name__}-{datetime.now().strftime("%m-%d-%Y-%H-%M-%S")}')
         im, _, ids = next(iter(train_set))
-        # writer.add_graph(model, (im.cuda(), ids.cuda()), verbose=True)
+        writer.add_graph(model, (im.cuda(), ids.cuda()), verbose=True)
         import torchvision
         grid = torchvision.utils.make_grid(im)
         writer.add_image('images', grid, 0)
-        writer.close()
+        
 
     for epoch in range(epochs_no):
         start_time = time.time()
@@ -105,13 +102,16 @@ def train(epochs_no: int,
         print(result)
         print(f"Training time for {epoch} : {time.time() - start_time}")
         history.append(result)
-        writer.add_scalar("Loss/val", result['val_loss'], epoch)
-        writer.add_scalar("Accuracy/val", result['val_acc'], epoch)
+        if debug:
+            writer.add_scalar("Loss/val", result['val_loss'], epoch)
+            writer.add_scalar("Accuracy/val", result['val_acc'], epoch)
 
         logger.info(str(result))
         if epoch % 10 == 0 :
-            save_checkpoints(epoch, model, optimizer, loss, model_dir + f"checkpoint_{epoch}_{type(model).__name__}.pt")
-    writer.flush()
+            save_checkpoints(epoch, model, optimizer, loss, checkpoint_dir + f"/checkpoint_{epoch}_{type(model).__name__}.pt")
+    if debug:
+        writer.flush()
+        writer.close()
 
     return history
 
@@ -120,11 +120,12 @@ def train_model(epochs_no: int,
                 model_name: str,
                 dataset: Dataset,
                 batch_size: int,
-                model_dir: str,
+                checkpoint_dir: str,
                 with_sam_opt: bool=False,
                 with_indices: bool=False,
                 end_of_epoch_routine: Function=None,
-                learning_rate = 0.0001):
+                learning_rate = 0.0001,
+                debug: bool= False):
     model_to_train.train()
     device = get_default_device()
     logger = start_training_logging(model_name)
@@ -139,7 +140,7 @@ def train_model(epochs_no: int,
 
     print(f"Parameter count {count_model_parameters(model_to_train, False)}")
     start_time = time.time()
-    history = train(epochs_no, model, train_loader, val_loader, model_dir, logger, learning_rate, with_sam_opt=with_sam_opt, with_indices=with_indices, end_of_epoch_routine=end_of_epoch_routine)
+    history = train(epochs_no, model, train_loader, val_loader, checkpoint_dir, logger, learning_rate, with_sam_opt=with_sam_opt, with_indices=with_indices, end_of_epoch_routine=end_of_epoch_routine, debug=debug)
     print(f"Training time for {epochs_no} epochs : {time.time() - start_time}")
 
     return model
@@ -148,11 +149,11 @@ def train_model(epochs_no: int,
 def train_and_test_model(classes: list,
                          model: Module,
                          dataset: Dataset,
-                         epochs: int,
                          config,
                          end_of_epoch_routine: Function = None):
     model_name=config['model_name']
-    model_dir=config['model_dir']
+    model_dir=config['model_directory']
+    checkpoint_dir=config['checkpoint_dir']
     batch_size=config['hyperparameters']['batch_size']
     epochs=config['hyperparameters']['epochs']
     with_indices=config['dataset_with_indices']
@@ -164,7 +165,7 @@ def train_and_test_model(classes: list,
     print(f"Parameters {count_model_parameters(model, False)}")
     start_time = time.time()
     trained_model = train_model(epochs, model, "model_name", dataset, batch_size,
-                                model_dir, with_indices=with_indices, with_sam_opt=with_sam_opt,
+                                checkpoint_dir=checkpoint_dir, with_indices=with_indices, with_sam_opt=with_sam_opt,
                                 learning_rate=learning_rate, debug=debug, end_of_epoch_routine=end_of_epoch_routine)
     save_model(trained_model, "model_name", model_dir)
     model = load_model(f"{model_dir}/{model_name}.pt")
