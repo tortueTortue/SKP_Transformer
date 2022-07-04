@@ -17,23 +17,7 @@ import math
 from training.metrics.metrics import print_accuracy
 
 from training.utils.utils import get_default_device, to_device
-
-# def backward_hook(self, grad_input, grad_output):
-#     print("grad_input")
-#     print(f"{grad_input}")
-#     print("grad_output")
-#     print(f"{grad_output}")
-
-
-def backward_hook(self, grad_input, grad_output):
-    print("grad_input")
-    print(f"{grad_input}")
-    print("grad_output")
-    print(f"{grad_output}")
     
-    # grad_input = grad(current_layer) * grad_output
-
-    # return tuple([9 * torch.ones(grad.shape, dtype=grad.dtype).cuda() if grad is not None else None for grad in grad_input])
 
 
 def to_indices(tensor):
@@ -80,6 +64,7 @@ class GaussianSelfAttention(nn.Module):
         self.std_devs = Parameter(torch.ones(no_of_imgs, 2, no_of_patches, requires_grad=True, dtype=torch.float32))
         self.sigma = sigma
         self.temperature_att_sc = 0.01
+
 
     def forward_no_loop(self, x, img_ids, mask):
         """
@@ -139,10 +124,60 @@ class GaussianSelfAttention(nn.Module):
         attention = torch.sigmoid(self.temperature_att_sc * attention_scores).unsqueeze(dim=2) * sampled_value
 
         return attention
+
+    def forward_no_loop_no_class_embeddings(self, x, img_ids, mask):
+        """
+        x, q(query), k(key), v(value) : (B(batch_size), S(seq_len), D(dim))
+        mask : (B(batch_size) x S(seq_len))
+        * split D(dim) into (H(n_heads), W(width of head)) ; D = H * W
+        """
+        #Algo
+        """
+        1. Find patch index in x and y of the key we want for each query using normal dis
+
+        """
+        # (B, S, D) -proj-> (B, S, D) -split-> (B, S, H, W) -trans-> (B, H, S, W)
+        q, k, v = self.proj_q(x), self.proj_k(x), self.proj_v(x)
+        batch_size, _, dim = x.shape
+
+        # Load on GPU
+        self.cuda_avgs = Parameter(self.avgs[img_ids].cuda(), requires_grad=True,)
+        self.cuda_std_devs = Parameter(self.std_devs[img_ids].cuda(), requires_grad=True)
+
+        norm_x = torch.normal(mean=torch.zeros(batch_size, 1, self.no_of_patches, requires_grad=True), std=self.sigma * torch.ones(1, self.no_of_patches, requires_grad=True)).cuda()
+        norm_y = torch.normal(mean=torch.zeros(batch_size, 1, self.no_of_patches, requires_grad=True), std=self.sigma * torch.ones(1, self.no_of_patches, requires_grad=True)).cuda()
+        
+        avg_b, _, avg_amnt = self.cuda_avgs.shape
+        avgs_x = torch.tensor_split(self.cuda_avgs, avg_amnt, dim=1)[0]
+        avgs_y = torch.tensor_split(self.cuda_avgs, avg_amnt, dim=1)[1]
+        stds_x = torch.tensor_split(self.cuda_std_devs, avg_amnt, dim=1)[0]
+        stds_y = torch.tensor_split(self.cuda_std_devs, avg_amnt, dim=1)[1]
+        
+        sample_x = torch.tanh((norm_x + avgs_x) * stds_x)
+        sample_y = torch.tanh((norm_y + avgs_y) * stds_y)
+
+        grid_dim = int(self.grid_dim)
+        grid = torch.reshape(torch.cat((sample_x, sample_y), dim=1), (batch_size, grid_dim, grid_dim, 2))
+
+
+        k = torch.reshape(torch.transpose(k, dim0=1, dim1=2), (batch_size, dim, grid_dim, grid_dim))
+        v = torch.reshape(torch.transpose(v, dim0=1, dim1=2), (batch_size, dim, grid_dim, grid_dim))
+
+        sampled_key = F.grid_sample(k, grid, mode='bilinear', padding_mode='zeros')
+        sampled_value = F.grid_sample(v, grid, mode='bilinear', padding_mode='zeros')
+
+        # Swap back
+        sampled_key = torch.transpose(torch.reshape(sampled_key, (batch_size, dim, grid_dim * grid_dim)), dim0=1, dim1=2)
+        sampled_value = torch.transpose(torch.reshape(sampled_value, (batch_size, dim, grid_dim * grid_dim)), dim0=1, dim1=2)
+
+        attention_scores = torch.sum(sampled_key * q, dim=-1)
+        attention = torch.sigmoid(self.temperature_att_sc * attention_scores).unsqueeze(dim=2) * sampled_value
+
+        return attention
     
     def forward(self, x, img_ids, mask):
 
-        return self.forward_no_loop(x, img_ids, mask)
+        return self.forward_no_loop_no_class_embeddings(x, img_ids, mask)
     
 
 class PositionWiseFeedForward(nn.Module):
@@ -202,35 +237,11 @@ class Transformer(nn.Module):
         for block in self.blocks:
 
             with torch.no_grad():
-                # block.attn.cuda_avgs.sub_(lr * block.attn.cuda_avgs.grad)
-                # block.attn.cuda_std_devs.sub_(lr * block.attn.cuda_std_devs.grad)
                 block.attn.cuda_avgs -= lr * block.attn.cuda_avgs.grad
                 block.attn.cuda_std_devs -= lr * block.attn.cuda_std_devs.grad
-
-                # https://stackoverflow.com/questions/54064934/gradient-disappearing-after-first-epoch-in-manual-linear-regression
-                # block.attn.cuda_avgs.requires_grad_(True)
-                # block.attn.cuda_std_devs.requires_grad_(True)
-
-                # block.attn.avgs[indexes].requires_grad_(True)
-                # block.attn.std_devs[indexes].requires_grad_(True)
-                # Dont work
                 
                 block.attn.avgs[indexes] = block.attn.cuda_avgs.cpu()
                 block.attn.std_devs[indexes] = block.attn.cuda_std_devs.cpu()
-                """
-                        ^           ^           ^           ^
-                        |           |           |           |
-                Ici les gradients ne sont pas copier. Est-ce qu'il faudrait le faire manuellement?
-                """
-
-                # block.attn.avgs[indexes].grad = block.attn.cuda_avgs.grad.cpu()
-                # block.attn.std_devs[indexes].grad = block.attn.cuda_std_devs.grad.cpu() # Dont work
-
-                # block.attn.cuda_avgs.requires_grad_(True)
-                # block.attn.cuda_std_devs.requires_grad_(True)
-
-                # block.attn.avgs[indexes].requires_grad_(True)
-                # block.attn.std_devs[indexes].requires_grad_(True)
 
          
 

@@ -114,7 +114,8 @@ class StochViT(nn.Module):
         nn.init.constant_(self.fc.weight, 0)
         nn.init.constant_(self.fc.bias, 0)
         nn.init.normal_(self.positional_embedding.pos_embedding, std=0.02)  # _trunc_normal(self.positional_embedding.pos_embedding, std=0.02)
-        nn.init.constant_(self.class_token, 0)
+        if hasattr(self, 'class_token'):
+            nn.init.constant_(self.class_token, 0)
 
     def forward(self, x, ids):
         """Breaks image into patches, applies transformer, applies MLP head.
@@ -150,9 +151,9 @@ class StochViT(nn.Module):
         
 
         to_device(self.patch_embedding, device) 
-        to_device(self.class_token, device) #TODO For soe reason class token ot put on cuda
+        # to_device(self.class_token, device) #TODO For soe reason class token ot put on cuda
         to_device(self.positional_embedding, device) # TODO Try with non-blcoking set to false
-        self.class_token.to()
+        # self.class_token.to()
         if hasattr(self, 'pre_logits'):
             to_device(self.pre_logits, device)
         to_device(self.norm, device)

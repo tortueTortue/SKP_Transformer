@@ -37,7 +37,7 @@ if __name__ == '__main__':
     # normalViT = ViT('B_16_imagenet1k', image_size=256, pretrained=False, num_classes=10)
     # train_model(epochs, normalViT, "normalViT", cifar10_data, batch_size, model_dir, with_indexes=False)
 
-    stochViT = StochViT(num_classes=10, no_of_imgs_for_training=50000, image_size=256, sigma=1, num_layers=1) #, patches=4, num_classes=10, dim=64)
+    stochViT = StochViT(num_classes=10, no_of_imgs_for_training=50000, image_size=256, sigma=1, num_layers=1, classifier="") #, patches=4, num_classes=10, dim=64)
     # stochViT = StochViT(num_classes=10, no_of_imgs_for_training=50000, image_size=256, sigma=1) #, patches=4, num_classes=10, dim=64)
     save_model(train_model(epochs, stochViT, "stochViT", cifar10_debug_data, batch_size, model_dir, with_indexes=True), "stochViT", model_dir)
     stochViT = load_model(f"E:/Git/SKP_Transformer/models/trained_models/stochViT.pt")
