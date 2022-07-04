@@ -115,7 +115,7 @@ class StochViT(nn.Module):
         nn.init.constant_(self.fc.bias, 0)
         nn.init.normal_(self.positional_embedding.pos_embedding, std=0.02)  # _trunc_normal(self.positional_embedding.pos_embedding, std=0.02)
         if hasattr(self, 'class_token'):
-            nn.init.constant_(self.class_token, 0) 
+            nn.init.constant_(self.class_token, 0)
 
     def forward(self, x):
         """Breaks image into patches, applies transformer, applies MLP head.
