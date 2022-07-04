@@ -65,7 +65,6 @@ class GaussianSelfAttention(nn.Module):
         self.sigma = sigma
         self.temperature_att_sc = 0.01
 
-
     def forward_no_loop(self, x, img_ids, mask):
         """
         x, q(query), k(key), v(value) : (B(batch_size), S(seq_len), D(dim))
@@ -243,9 +242,7 @@ class Transformer(nn.Module):
                 block.attn.avgs[indexes] = block.attn.cuda_avgs.cpu()
                 block.attn.std_devs[indexes] = block.attn.cuda_std_devs.cpu()
 
-         
-
-    def log_gaussian(self, debug=True, no_of_imgs=3):
+    def log_gaussian(self, debug=True, no_of_imgs=3): # TODO : Clean UP, ON debug params --> End of ewpoch routine
         for i in range(no_of_imgs):
             if debug:
                 first_block = self.blocks[0].attn
