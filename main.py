@@ -11,7 +11,7 @@ if __name__ == '__main__':
     cifar10_debug_data = Cifar10Dataset(batch_size=config['hyperparameters']['batch_size'], subset=True, subset_size=1000, test_subset_size=500)
     classes = cifar10_debug_data.classes
 
-    stochViT = StochViT(num_classes=10, no_of_imgs_for_training=50000, image_size=256, sigma=1, num_layers=1)
+    stochViT = StochViT(num_classes=10, no_of_imgs_for_training=50000, image_size=256, sigma=1, num_layers=1, classifier="")
 
     train_and_test_model(classes=classes,
                          model=stochViT,
