@@ -234,9 +234,21 @@ class StochViT(nn.Module):
             to_device(block.attn.proj_k, device)
             to_device(block.attn.proj_v, device)
             to_device(block.attn.drop, device)
+    
+    def log_gaussian(self):
+        assert self.attention_type == 'Gaussian', "This method is made for Gaussian Attention Transformer."
+
+        attn: GaussianSelfAttention = self.transformer.blocks[0].attn
+
+        print("First block gaussian averages:")
+        print(attn.avgs)
+        print("First block gaussian std deviation:")
+        print(attn.std_devs)
 
 
 def end_of_iteration_stoch_gaussian_ViT(learning_rate) -> Function:
     def f(model: StochViT, indices):
         model.backpropagate_attention(indices=indices, learning_rate=learning_rate)
+        model.log_gaussian()
+
     return f
