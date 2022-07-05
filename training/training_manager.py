@@ -1,24 +1,20 @@
 """
 Here are the training methods.
 """
-from distutils.log import debug
+import torch
+import time
+
 from pyclbr import Function
-from statistics import mode
-from models.skp_vit import StochViT
-from models.skp_Transformer import SKP_Transformer
 from torch.utils.data import Dataset, DataLoader
 from torch.nn import Module, CrossEntropyLoss
 from torch.optim import SGD
-import torch
-import time
+from optimizer.sam.sam import SAM
 
 from training.utils.utils import batches_to_device, get_default_device, to_device, save_checkpoints
 from training.metrics.metrics import accuracy, print_accuracy_per_class, print_accuracy, count_model_parameters
 from training.utils.logger import start_training_logging
 from datetime import datetime
 from training.utils.utils import save_model, load_model
-
-from optimizer.sam.sam import SAM
 
 def validation_step(model, batch, with_indices: bool = False):
     images, labels, i = batch
@@ -50,6 +46,7 @@ def train(epochs_no: int,
           logger, lr, with_sam_opt: bool = False,
           with_indices: bool = False, 
           end_of_epoch_routine: Function = None,
+          end_of_iteration_routine: Function = None,
           debug: bool = False):
     loss = CrossEntropyLoss()
     history = []
@@ -72,12 +69,12 @@ def train(epochs_no: int,
     for epoch in range(epochs_no):
         start_time = time.time()
         """  Training Phase """ 
-        for batch_index, batch in enumerate(train_set):
+        for _, batch in enumerate(train_set):
             optimizer.zero_grad()
-            inputs, labels, indexes = batch
+            inputs, labels, indices = batch
             if with_indices:
-                inputs, labels, indexes = inputs.cuda(), labels.cuda(), indexes.cuda()
-                curr_loss = loss(model(inputs, indexes), labels)
+                inputs, labels, indices = inputs.cuda(), labels.cuda(), indices.cuda()
+                curr_loss = loss(model(inputs, indices), labels)
             else:
                 inputs, labels = inputs.cuda(), labels.cuda()
                 curr_loss = loss(model(inputs), labels)
@@ -92,9 +89,15 @@ def train(epochs_no: int,
                 optimizer.second_step(zero_grad=True)
             else:
                 optimizer.step()
+                
+            if end_of_iteration_routine:
+                if with_indices:
+                    end_of_iteration_routine(model=model, indices=indices)
+                else:
+                    end_of_iteration_routine(model=model)
 
-            if end_of_epoch_routine:
-                end_of_epoch_routine(model=model)
+        if end_of_epoch_routine:
+            end_of_epoch_routine(model=model)
 
 
         """ Validation Phase """
@@ -124,6 +127,7 @@ def train_model(epochs_no: int,
                 with_sam_opt: bool=False,
                 with_indices: bool=False,
                 end_of_epoch_routine: Function=None,
+                end_of_iteration_routine: Function=None,
                 learning_rate = 0.0001,
                 debug: bool= False):
     model_to_train.train()
@@ -140,7 +144,7 @@ def train_model(epochs_no: int,
 
     print(f"Parameter count {count_model_parameters(model_to_train, False)}")
     start_time = time.time()
-    history = train(epochs_no, model, train_loader, val_loader, checkpoint_dir, logger, learning_rate, with_sam_opt=with_sam_opt, with_indices=with_indices, end_of_epoch_routine=end_of_epoch_routine, debug=debug)
+    train(epochs_no, model, train_loader, val_loader, checkpoint_dir, logger, learning_rate, with_sam_opt=with_sam_opt, with_indices=with_indices, end_of_epoch_routine=end_of_epoch_routine, debug=debug, end_of_iteration_routine=end_of_iteration_routine)
     print(f"Training time for {epochs_no} epochs : {time.time() - start_time}")
 
     return model
@@ -150,7 +154,8 @@ def train_and_test_model(classes: list,
                          model: Module,
                          dataset: Dataset,
                          config,
-                         end_of_epoch_routine: Function = None):
+                         end_of_epoch_routine: Function = None,
+                         end_of_iteration_routine: Function = None):
     model_name=config['model_name']
     model_dir=config['model_directory']
     checkpoint_dir=config['checkpoint_dir']
@@ -164,7 +169,7 @@ def train_and_test_model(classes: list,
     print(f"*********************************Training {model_name}*********************************")
     print(f"Parameters {count_model_parameters(model, False)}")
     start_time = time.time()
-    trained_model = train_model(epochs, model, "model_name", dataset, batch_size,
+    trained_model = train_model(epochs, model, "model_name", dataset, batch_size, end_of_iteration_routine= end_of_iteration_routine,
                                 checkpoint_dir=checkpoint_dir, with_indices=with_indices, with_sam_opt=with_sam_opt,
                                 learning_rate=learning_rate, debug=debug, end_of_epoch_routine=end_of_epoch_routine)
     save_model(trained_model, "model_name", model_dir)

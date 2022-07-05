@@ -1,3 +1,4 @@
+from pyclbr import Function
 from typing import Optional
 import copy
 
@@ -193,7 +194,7 @@ class StochViT(nn.Module):
             x = self.fc(x)  # b,num_classes
         return x
 
-    def backpropagate_attention(self, lr, indexes, momentum):
+    def backpropagate_attention(self, lr, indices, momentum):
         assert self.attention_type == 'Gaussian', "This method is made for Gaussian Attention Transformer."
 
         for block in self.transformer.blocks:
@@ -201,8 +202,8 @@ class StochViT(nn.Module):
                 block.attn.cuda_avgs -= lr * block.attn.cuda_avgs.grad
                 block.attn.cuda_std_devs -= lr * block.attn.cuda_std_devs.grad
                 
-                block.attn.avgs[indexes] = block.attn.cuda_avgs.cpu()
-                block.attn.std_devs[indexes] = block.attn.cuda_std_devs.cpu()
+                block.attn.avgs[indices] = block.attn.cuda_avgs.cpu()
+                block.attn.std_devs[indices] = block.attn.cuda_std_devs.cpu()
 
     # TODO : Reimplement this, VERY BAD PRACTICE
     def load_on_gpu(self):
@@ -233,3 +234,9 @@ class StochViT(nn.Module):
             to_device(block.attn.proj_k, device)
             to_device(block.attn.proj_v, device)
             to_device(block.attn.drop, device)
+
+
+def end_of_iteration_stoch_gaussian_ViT(learning_rate) -> Function:
+    def f(model: StochViT, indices):
+        model.backpropagate_attention(indices=indices, learning_rate=learning_rate)
+    return f
