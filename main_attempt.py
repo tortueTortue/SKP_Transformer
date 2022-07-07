@@ -1,4 +1,5 @@
 import json
+from pyclbr import Function
 import sys
 
 from training.training_manager import train_and_test_model
@@ -10,7 +11,8 @@ if __name__ == '__main__':
     if len(sys.argv) > 1:
         f = open(f'configs/{sys.argv[1]}.json')
     else:
-        f = open('configs/default_configs.json')
+        f = open('configs/gaussian_configs.json')
+        # f = open('configs/default_configs.json')
 
     config = json.load(f)
     f.close()
@@ -21,7 +23,7 @@ if __name__ == '__main__':
                              test_subset_size=500)
     classes = dataset.classes
 
-    end_of_iteration_routine = None
+    end_of_iteration_routine: Function = None
 
     if config['attention_type'] == 'Gaussian':
         model = StochViT(num_classes=10,

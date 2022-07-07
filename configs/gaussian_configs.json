@@ -14,5 +14,5 @@
         },
     "dataset_with_indices" : false,
     "with_sam_opt" : false,
-    "debug" : false,
+    "debug" : false
 }
