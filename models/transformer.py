@@ -194,14 +194,23 @@ class StochViT(nn.Module):
             x = self.fc(x)  # b,num_classes
         return x
 
-    def backpropagate_attention(self, lr, indices, momentum):
+    def backpropagate_attention(self, lr, indices, momentum:float):
         assert self.attention_type == 'Gaussian', "This method is made for Gaussian Attention Transformer."
 
         for block in self.transformer.blocks:
             with torch.no_grad():
-                block.attn.cuda_avgs -= lr * block.attn.cuda_avgs.grad
-                block.attn.cuda_std_devs -= lr * block.attn.cuda_std_devs.grad
-                
+                if momentum: #TODO Verify
+                    v_avgs = momentum * block.attn.cuda_avgs + \
+                                           (1 - momentum) * block.attn.cuda_avgs.grad
+                    v_std_devs = momentum * block.attn.cuda_std_devs + \
+                                               (1 - momentum) * block.attn.cuda_std_devs.grad
+
+                    block.attn.cuda_avgs -= lr * v_avgs
+                    block.attn.cuda_std_devs -= lr * v_std_devs
+                else:
+                    block.attn.cuda_avgs -= lr * block.attn.cuda_avgs.grad
+                    block.attn.cuda_std_devs -= lr * block.attn.cuda_std_devs.grad
+
                 block.attn.avgs[indices] = block.attn.cuda_avgs.cpu()
                 block.attn.std_devs[indices] = block.attn.cuda_std_devs.cpu()
 
@@ -248,7 +257,7 @@ class StochViT(nn.Module):
 
 def end_of_iteration_stoch_gaussian_ViT(learning_rate) -> Function:
     def f(model: StochViT, indices):
-        model.backpropagate_attention(indices=indices, learning_rate=learning_rate)
+        model.backpropagate_attention(indices=indices, lr=learning_rate, momentum=None)
         model.log_gaussian()
 
     return f
