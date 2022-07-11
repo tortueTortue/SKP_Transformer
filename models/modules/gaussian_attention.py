@@ -3,6 +3,8 @@ from torch.nn import functional as F, Parameter
 import torch
 import numpy as np
 
+from training.utils.utils import get_default_device, to_device
+
 class GaussianSelfAttention(nn.Module):
     def __init__(self, dim, num_heads, no_of_imgs, no_of_patches, sigma=1):
         super().__init__()
@@ -18,7 +20,7 @@ class GaussianSelfAttention(nn.Module):
         self.sigma = sigma
         self.temperature_att_sc = 0.01
 
-    def forward_(self, x, img_ids, mask):
+    def forward_(self, x, indices):
         """
         x, q(query), k(key), v(value) : (B(batch_size), S(seq_len), D(dim))
         mask : (B(batch_size) x S(seq_len))
@@ -28,8 +30,8 @@ class GaussianSelfAttention(nn.Module):
         batch_size, _, dim = x.shape
 
         # Load on GPU
-        self.cuda_avgs = Parameter(self.avgs[img_ids].cuda(), requires_grad=True,)
-        self.cuda_std_devs = Parameter(self.std_devs[img_ids].cuda(), requires_grad=True)
+        self.cuda_avgs = Parameter(self.avgs[indices].cuda(), requires_grad=True,)
+        self.cuda_std_devs = Parameter(self.std_devs[indices].cuda(), requires_grad=True)
 
         norm_x = torch.normal(mean=torch.zeros(batch_size, 1, self.no_of_patches, requires_grad=True), std=self.sigma * torch.ones(1, self.no_of_patches, requires_grad=True)).cuda()
         norm_y = torch.normal(mean=torch.zeros(batch_size, 1, self.no_of_patches, requires_grad=True), std=self.sigma * torch.ones(1, self.no_of_patches, requires_grad=True)).cuda()
@@ -70,7 +72,7 @@ class GaussianSelfAttention(nn.Module):
 
         return attention
 
-    def forward_no_class_embed(self, x, img_ids, mask):
+    def forward_no_class_embed(self, x, indices):
         """
         x, q(query), k(key), v(value) : (B(batch_size), S(seq_len), D(dim))
         mask : (B(batch_size) x S(seq_len))
@@ -80,13 +82,13 @@ class GaussianSelfAttention(nn.Module):
         batch_size, _, dim = x.shape
 
         # Load on GPU
-        self.cuda_avgs = Parameter(self.avgs[img_ids].cuda(), requires_grad=True,)
-        self.cuda_std_devs = Parameter(self.std_devs[img_ids].cuda(), requires_grad=True)
+        self.cuda_avgs = Parameter(self.avgs[indices].cuda(), requires_grad=True,)
+        self.cuda_std_devs = Parameter(self.std_devs[indices].cuda(), requires_grad=True)
 
         norm_x = torch.normal(mean=torch.zeros(batch_size, 1, self.no_of_patches, requires_grad=True), std=self.sigma * torch.ones(1, self.no_of_patches, requires_grad=True)).cuda()
         norm_y = torch.normal(mean=torch.zeros(batch_size, 1, self.no_of_patches, requires_grad=True), std=self.sigma * torch.ones(1, self.no_of_patches, requires_grad=True)).cuda()
         
-        avg_b, _, avg_amnt = self.cuda_avgs.shape
+        _, _, avg_amnt = self.cuda_avgs.shape
         avgs_x = torch.tensor_split(self.cuda_avgs, avg_amnt, dim=1)[0]
         avgs_y = torch.tensor_split(self.cuda_avgs, avg_amnt, dim=1)[1]
         stds_x = torch.tensor_split(self.cuda_std_devs, avg_amnt, dim=1)[0]
@@ -114,5 +116,5 @@ class GaussianSelfAttention(nn.Module):
 
         return attention
     
-    def forward(self, x, img_ids, mask):
-        return self.forward_no_class_embed(x, img_ids, mask)
+    def forward(self, x, indices):
+        return self.forward_no_class_embed(x, indices)

@@ -3,7 +3,7 @@
     "model_directory": "E:/Git/SKP_Transformer/models/trained_models",
     "model_name": "Stoch_Gaussian_ViT",
     "checkpoint_dir": "E:/Git/SKP_Transformer/training/checkpoints",
-    "attention_type": "Gaussian",
+    "attention_type": "Normal",
     "hyperparameters":
         {
             "batch_size": 2,
@@ -12,7 +12,7 @@
             "attention_learning_rate": 0.001,
             "num_layers" : 12
         },
-    "dataset_with_indices" : true,
+    "dataset_with_indices" : false,
     "with_sam_opt" : false,
     "debug" : false
 }

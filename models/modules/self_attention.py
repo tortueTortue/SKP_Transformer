@@ -1,4 +1,8 @@
-
+import numpy as np
+import torch
+from torch import nn
+from torch.nn import functional as F
+from typing import Optional
 
 def split_last(x, shape):
     "split the last dimension to given shape"
@@ -27,7 +31,7 @@ class MultiHeadedSelfAttention(nn.Module):
         self.n_heads = num_heads
         self.scores = None # for visualization
 
-    def forward(self, x, mask):
+    def forward(self, x, mask, indices: Optional[torch.Tensor] = None):
         """
         x, q(query), k(key), v(value) : (B(batch_size), S(seq_len), D(dim))
         mask : (B(batch_size) x S(seq_len))

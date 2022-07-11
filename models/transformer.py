@@ -37,8 +37,9 @@ class Block(nn.Module):
         self.norm2 = nn.LayerNorm(dim, eps=1e-6)
         self.drop = nn.Dropout(dropout)
 
-    def forward(self, x, mask):
-        h = self.drop(self.proj(self.attn(self.norm1(x), mask)))
+    def forward(self, x, indices: Optional[torch.Tensor] = None):
+        attn_out = self.attn(self.norm1(x), indices)
+        h = self.drop(self.proj(attn_out))
         x = x + h
         h = self.drop(self.pwff(self.norm2(x)))
         x = x + h
@@ -51,9 +52,9 @@ class Transformer(nn.Module):
         self.blocks = nn.ModuleList([
             Block(dim, ff_dim, dropout, attn) for _ in range(num_layers)])
 
-    def forward(self, x, mask=None):
+    def forward(self, x, indices: Optional[torch.Tensor] = None):
         for block in self.blocks:
-            x = block(x, mask)
+            x = block(x, indices = indices)
         return x
 
 class PositionalEmbedding1D(nn.Module):
@@ -172,7 +173,7 @@ class StochViT(nn.Module):
         if hasattr(self, 'class_token'):
             nn.init.constant_(self.class_token, 0)
 
-    def forward(self, x):
+    def forward(self, x, indices: Optional[torch.Tensor] = None):
         """Breaks image into patches, applies transformer, applies MLP head.
 
         Args:
@@ -185,7 +186,7 @@ class StochViT(nn.Module):
             x = torch.cat((self.class_token.expand(b, -1, -1), x), dim=1)  # b,gh*gw+1,d
         if hasattr(self, 'positional_embedding'): 
             x = self.positional_embedding(x)  # b,gh*gw+1,d 
-        x = self.transformer(x)  # b,gh*gw+1,d
+        x = self.transformer(x, indices=indices)  # b,gh*gw+1,d
         if hasattr(self, 'pre_logits'):
             x = self.pre_logits(x)
             x = torch.tanh(x)
@@ -194,16 +195,29 @@ class StochViT(nn.Module):
             x = self.fc(x)  # b,num_classes
         return x
 
-    def backpropagate_attention(self, lr, indices, momentum):
+    def backpropagate_attention(self, lr, indices, momentum:float = None):
         assert self.attention_type == 'Gaussian', "This method is made for Gaussian Attention Transformer."
 
         for block in self.transformer.blocks:
             with torch.no_grad():
+                # if momentum: #TODO Verify
+                #     v_avgs = momentum * block.attn.cuda_avgs + \
+                #                            (1 - momentum) * block.attn.cuda_avgs.grad
+                #     v_std_devs = momentum * block.attn.cuda_std_devs + \
+                #                                (1 - momentum) * block.attn.cuda_std_devs.grad
+
+                #     block.attn.cuda_avgs -= lr * v_avgs
+                #     block.attn.cuda_std_devs -= lr * v_std_devs
+                # else:
+                #     block.attn.cuda_avgs -= lr * block.attn.cuda_avgs.grad
+                #     block.attn.cuda_std_devs -= lr * block.attn.cuda_std_devs.grad
                 block.attn.cuda_avgs -= lr * block.attn.cuda_avgs.grad
                 block.attn.cuda_std_devs -= lr * block.attn.cuda_std_devs.grad
-                
+
+                print(f"grads: {block.attn.cuda_std_devs}")
                 block.attn.avgs[indices] = block.attn.cuda_avgs.cpu()
                 block.attn.std_devs[indices] = block.attn.cuda_std_devs.cpu()
+
 
     # TODO : Reimplement this, VERY BAD PRACTICE
     def load_on_gpu(self):
@@ -221,7 +235,6 @@ class StochViT(nn.Module):
         to_device(self.norm, device)
         to_device(self.fc, device)
 
-
         for block in self.transformer.blocks:
             to_device(block.drop, device)
             to_device(block.proj, device)
@@ -233,7 +246,8 @@ class StochViT(nn.Module):
             to_device(block.attn.proj_q, device)
             to_device(block.attn.proj_k, device)
             to_device(block.attn.proj_v, device)
-            to_device(block.attn.drop, device)
+
+        return self
     
     def log_gaussian(self):
         assert self.attention_type == 'Gaussian', "This method is made for Gaussian Attention Transformer."
@@ -248,7 +262,7 @@ class StochViT(nn.Module):
 
 def end_of_iteration_stoch_gaussian_ViT(learning_rate) -> Function:
     def f(model: StochViT, indices):
-        model.backpropagate_attention(indices=indices, learning_rate=learning_rate)
+        model.backpropagate_attention(indices=indices, lr=learning_rate)
         model.log_gaussian()
 
     return f

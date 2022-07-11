@@ -52,7 +52,7 @@ def train(epochs_no: int,
     history = []
 
     if with_sam_opt:
-        optimizer = SAM(model.parameters(), SGD(), lr=0.0001, momentum=0.9)
+        optimizer = SAM(model.parameters(), SGD, lr=0.0001, momentum=0.9)
     else:
         optimizer = SGD(model.parameters(), lr=0.0001, momentum=0.9)
 
@@ -68,7 +68,7 @@ def train(epochs_no: int,
 
     for epoch in range(epochs_no):
         start_time = time.time()
-        """  Training Phase """ 
+        """  Training Phase """
         for _, batch in enumerate(train_set):
             optimizer.zero_grad()
             inputs, labels, indices = batch
@@ -91,6 +91,7 @@ def train(epochs_no: int,
                 optimizer.step()
                 
             if end_of_iteration_routine:
+                print("End of iteration")
                 if with_indices:
                     end_of_iteration_routine(model=model, indices=indices)
                 else:
@@ -111,7 +112,7 @@ def train(epochs_no: int,
 
         logger.info(str(result))
         if epoch % 10 == 0 :
-            save_checkpoints(epoch, model, optimizer, loss, checkpoint_dir + f"/checkpoint_{epoch}_{type(model).__name__}.pt")
+            save_checkpoints(epoch, model, optimizer, loss,  f"{checkpoint_dir}/checkpoint_{epoch}_{type(model).__name__}.pt")
     if debug:
         writer.flush()
         writer.close()
@@ -140,7 +141,7 @@ def train_model(epochs_no: int,
     batches_to_device(val_loader, device)
     batches_to_device(test_loader, device)
 
-    model = to_device(model_to_train, device)
+    model = model_to_train.load_on_gpu() if model_to_train.attention_type and model_to_train.attention_type == 'Gaussian' else to_device(model_to_train, device)
 
     print(f"Parameter count {count_model_parameters(model_to_train, False)}")
     start_time = time.time()

@@ -1,6 +1,9 @@
 from torch import nn
+from torch.nn import  functional as F
 import torch
 import numpy as np
+
+from training.utils.utils import get_default_device, to_device
 
 class KeyFinderNet(nn.Module):
     def __init__(self, dim, mode='1D'):
@@ -110,5 +113,5 @@ class StochSelfAttention(nn.Module):
 
         return attention
 
-    def forward(self, x, mask):
+    def forward(self, x, indices):
         return self.grid_sample_forward_no_class_embedding(x)
