@@ -136,3 +136,5 @@ runs/*
 
 models/trained_models/*
 training/checkpoints/*
+
+apex/*
