@@ -173,8 +173,8 @@ def train_and_test_model(classes: list,
     trained_model = train_model(epochs, model, "model_name", dataset, batch_size, end_of_iteration_routine= end_of_iteration_routine,
                                 checkpoint_dir=checkpoint_dir, with_indices=with_indices, with_sam_opt=with_sam_opt,
                                 learning_rate=learning_rate, debug=debug, end_of_epoch_routine=end_of_epoch_routine)
-    save_model(trained_model, "model_name", model_dir)
-    model = load_model(f"{model_dir}/{model_name}.pt")
+    save_model(trained_model, model_name, model_dir)
+    model = load_model(f"{model_dir}/{model_name}.pt") #TODO TEST THIS
     print(f"Training time for {epochs} epochs : {time.time() - start_time}")
     print(f"*********************************Testing  {model_name}*********************************")
     print_accuracy_per_class(model, classes, batch_size, dataset.test_loader)
