@@ -65,8 +65,8 @@ class StochSelfAttention(nn.Module):
 
         grid = torch.reshape(torch.cat((sample_x, sample_y), dim=1), (batch_size, grid_dim, grid_dim, 2))
 
-        sampled_key = F.grid_sample(k_input, grid, mode='bilinear', padding_mode='zeros')
-        sampled_value = F.grid_sample(v_input, grid, mode='bilinear', padding_mode='zeros')
+        sampled_key = F.grid_sample(k_input, grid, mode='bilinear', padding_mode='zeros', align_corners=False)
+        sampled_value = F.grid_sample(v_input, grid, mode='bilinear', padding_mode='zeros', align_corners=False)
 
         # Swap back
         sampled_key = torch.transpose(torch.reshape(sampled_key, (batch_size, dim, grid_dim * grid_dim)), dim0=1, dim1=2)
@@ -101,8 +101,8 @@ class StochSelfAttention(nn.Module):
         k = torch.reshape(torch.transpose(k, dim0=1, dim1=2), (batch_size, dim, grid_dim, grid_dim))
         v = torch.reshape(torch.transpose(v, dim0=1, dim1=2), (batch_size, dim, grid_dim, grid_dim))
 
-        sampled_key = F.grid_sample(k, grid, mode='bilinear', padding_mode='zeros')
-        sampled_value = F.grid_sample(v, grid, mode='bilinear', padding_mode='zeros')
+        sampled_key = F.grid_sample(k, grid, mode='bilinear', padding_mode='zeros', align_corners=False)
+        sampled_value = F.grid_sample(v, grid, mode='bilinear', padding_mode='zeros', align_corners=False)
 
         # Swap back
         sampled_key = torch.transpose(torch.reshape(sampled_key, (batch_size, dim, grid_dim * grid_dim)), dim0=1, dim1=2)
