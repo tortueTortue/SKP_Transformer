@@ -1,7 +1,7 @@
 {
     "project_name": "SKP_Transformer",
     "model_directory": "E:/Git/SKP_Transformer/models/trained_models",
-    "model_name": "Stoch_Gaussian_ViT",
+    "model_name": "No_Attn_ViT",
     "checkpoint_dir": "E:/Git/SKP_Transformer/training/checkpoints",
     "attention_type": "None",
     "hyperparameters":
