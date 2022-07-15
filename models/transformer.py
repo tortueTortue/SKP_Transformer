@@ -261,8 +261,10 @@ class StochViT(nn.Module):
 
 
 def end_of_iteration_stoch_gaussian_ViT(learning_rate) -> Function:
-    def f(model: StochViT, indices):
+    def f(model: StochViT, indices, epoch: int = -1, iteration: int = -1):
         model.backpropagate_attention(indices=indices, lr=learning_rate)
-        model.log_gaussian()
+        if epoch % 10 == 0 and iteration < 10:
+            print(f"Epoch : {epoch} and iteration :{iteration}")
+            model.log_gaussian()
 
     return f

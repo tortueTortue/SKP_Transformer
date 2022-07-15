@@ -69,7 +69,7 @@ def train(epochs_no: int,
     for epoch in range(epochs_no):
         start_time = time.time()
         """  Training Phase """
-        for _, batch in enumerate(train_set):
+        for iteration, batch in enumerate(train_set):
             optimizer.zero_grad()
             inputs, labels, indices = batch
             if with_indices:
@@ -93,7 +93,7 @@ def train(epochs_no: int,
             if end_of_iteration_routine:
                 print("End of iteration")
                 if with_indices:
-                    end_of_iteration_routine(model=model, indices=indices)
+                    end_of_iteration_routine(model=model, indices=indices, epoch=epoch, iteration=iteration)
                 else:
                     end_of_iteration_routine(model=model)
 
@@ -174,7 +174,7 @@ def train_and_test_model(classes: list,
                                 checkpoint_dir=checkpoint_dir, with_indices=with_indices, with_sam_opt=with_sam_opt,
                                 learning_rate=learning_rate, debug=debug, end_of_epoch_routine=end_of_epoch_routine)
     save_model(trained_model, model_name, model_dir)
-    model = load_model(f"{model_dir}/{model_name}.pt") #TODO TEST THIS
+    model = load_model(f"{model_dir}/{model_name}.pt")
     print(f"Training time for {epochs} epochs : {time.time() - start_time}")
     print(f"*********************************Testing  {model_name}*********************************")
     print_accuracy_per_class(model, classes, batch_size, dataset.test_loader)
