@@ -33,7 +33,6 @@ class KeyFinderNet(nn.Module):
             self.fc3 = nn.Linear(60, 2)
         self.relu = torch.nn.ReLU()
         self.tanh = torch.nn.Tanh()
-        # self.sigmoid = torch.nn.Sigmoid()
 
     def forward(self, x):
         out = self.fc1(x)
@@ -42,35 +41,19 @@ class KeyFinderNet(nn.Module):
         out = self.relu(out)
         out = self.fc3(out)
         out = self.tanh(out)
-        # out = self.sigmoid(out)
 
         return out
 
 class StochSelfAttention(nn.Module):
-    def __init__(self, dim, num_heads, dropout):
+    def __init__(self, dim, num_heads):
         super().__init__()
         self.proj_q = nn.Linear(dim, dim)
         self.proj_k = nn.Linear(dim, dim)
         self.proj_v = nn.Linear(dim, dim)
-        self.drop = nn.Dropout(dropout)
         self.n_heads = num_heads
         self.key_net = KeyFinderNet(dim)
         self.key_net_2D = KeyFinderNet(dim, mode='2D')
         self.temperature_att_sc = 0.01
-
-
-    def round_forward(self, x):
-        q, k, v = self.proj_q(x), self.proj_k(x), self.proj_v(x)
-        batch_size, no_of_patches, dim = x.shape
-
-        indices = to_indices(torch.round(no_of_patches * self.key_net(torch.concat((q,k), dim=2))))
-
-        sampled_keys = k[indices]
-        sampled_values = v[indices]
-
-        attention_scores = torch.sum(sampled_keys * q, dim=-1)
-        attention = torch.sigmoid(self.temperature_att_sc * attention_scores).unsqueeze(dim=2) * sampled_values
-        return attention
 
     def grid_sample_forward(self, x):
         """
@@ -78,19 +61,12 @@ class StochSelfAttention(nn.Module):
         mask : (B(batch_size) x S(seq_len))
         * split D(dim) into (H(n_heads), W(width of head)) ; D = H * W
         """
-        #Algo
-        """
-        1. Find patch index in x and y of the key we want for each query using normal dis
-
-        """
         # (B, S, D) -proj-> (B, S, D) -split-> (B, S, H, W) -trans-> (B, H, S, W)
         q, k, v = self.proj_q(x), self.proj_k(x), self.proj_v(x)
         batch_size, no_of_patches, dim = x.shape
 
         grid_dim = int(np.sqrt(no_of_patches))
 
-        # k_ce = k[0:batch_size, :1, :] # Class embeddings, not used, figure out later what to do
-        # v_ce = v[0:batch_size, :1, :]
         k = k[0:batch_size, 1:, :]
         v = v[0:batch_size, 1:, :]
         q_no_ce = q[0:batch_size, 1:, :]
@@ -119,10 +95,6 @@ class StochSelfAttention(nn.Module):
         attention = torch.sigmoid(self.temperature_att_sc * attention_scores).unsqueeze(dim=2) * sampled_value
 
         return attention
-        return grid.sum()+attention # Gives grad
-        return attention.sum()+attention # Does not give grad
-        return attention.sum()*attention # Gives grad
-        return 
 
     def grid_sample_forward_no_class_embedding(self, x):
         """
@@ -130,12 +102,6 @@ class StochSelfAttention(nn.Module):
         mask : (B(batch_size) x S(seq_len))
         * split D(dim) into (H(n_heads), W(width of head)) ; D = H * W
         """
-        #Algo
-        """
-        1. Find patch index in x and y of the key we want for each query using normal dis
-
-        """
-        # (B, S, D) -proj-> (B, S, D) -split-> (B, S, H, W) -trans-> (B, H, S, W)
         q, k, v = self.proj_q(x), self.proj_k(x), self.proj_v(x)
         batch_size, no_of_patches, dim = x.shape
 
@@ -163,10 +129,8 @@ class StochSelfAttention(nn.Module):
         return attention
 
     def forward(self, x, mask):
-
         return self.grid_sample_forward_no_class_embedding(x)
 
-        # return self.bilinear_forward(x)
     
 
 class PositionWiseFeedForward(nn.Module):

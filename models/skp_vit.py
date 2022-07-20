@@ -115,7 +115,7 @@ class StochViT(nn.Module):
         nn.init.constant_(self.fc.bias, 0)
         nn.init.normal_(self.positional_embedding.pos_embedding, std=0.02)  # _trunc_normal(self.positional_embedding.pos_embedding, std=0.02)
         if hasattr(self, 'class_token'):
-            nn.init.constant_(self.class_token, 0) 
+            nn.init.constant_(self.class_token, 0)
 
     def forward(self, x):
         """Breaks image into patches, applies transformer, applies MLP head.
@@ -138,3 +138,40 @@ class StochViT(nn.Module):
             x = self.norm(x)[:, 0]  # b,d
             x = self.fc(x)  # b,num_classes
         return x
+
+    # TODO : Reimplement this, VERY BAD PRACTICE
+    def propagate_attention(self, lr, indexes, momentum):
+        self.transformer.propagate_attention(lr, indexes, momentum)
+
+    # TODO : Reimplement this, VERY BAD PRACTICE
+    def compute_gradients(self, loss, indexes):
+        self.transformer.compute_gradients(loss, indexes)
+
+    # TODO : Reimplement this, VERY BAD PRACTICE
+    def load_on_gpu(self):
+        device = get_default_device()
+        
+
+        to_device(self.patch_embedding, device) 
+        to_device(self.positional_embedding, device)
+        if hasattr(self, 'class_token'):
+            to_device(self.class_token, device)
+            self.class_token.to()
+        if hasattr(self, 'pre_logits'):
+            to_device(self.pre_logits, device)
+        to_device(self.norm, device)
+        to_device(self.fc, device)
+
+
+        for block in self.transformer.blocks:
+            to_device(block.drop, device)
+            to_device(block.proj, device)
+            to_device(block.norm1, device)
+            to_device(block.drop, device)
+            to_device(block.pwff, device)
+            to_device(block.norm2, device)
+
+            to_device(block.attn.proj_q, device)
+            to_device(block.attn.proj_k, device)
+            to_device(block.attn.proj_v, device)
+            to_device(block.attn.drop, device)
