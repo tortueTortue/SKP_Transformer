@@ -1,8 +1,11 @@
 import numpy as np
 import torch
+import time
 from torch import nn
 from torch.nn import functional as F
 from typing import Optional
+
+from benchmarking import BENCHMARK_MAP_IN_S
 
 def split_last(x, shape):
     "split the last dimension to given shape"
@@ -31,7 +34,7 @@ class MultiHeadedSelfAttention(nn.Module):
         self.n_heads = num_heads
         self.scores = None # for visualization
 
-    def forward(self, x, mask, indices: Optional[torch.Tensor] = None):
+    def forward_(self, x, mask, indices: Optional[torch.Tensor] = None):
         """
         x, q(query), k(key), v(value) : (B(batch_size), S(seq_len), D(dim))
         mask : (B(batch_size) x S(seq_len))
@@ -52,3 +55,36 @@ class MultiHeadedSelfAttention(nn.Module):
         h = merge_last(h, 2)
         self.scores = scores
         return h
+
+    def forward_benchmark(self, x, mask, indices: Optional[torch.Tensor] = None):
+        """
+        x, q(query), k(key), v(value) : (B(batch_size), S(seq_len), D(dim))
+        mask : (B(batch_size) x S(seq_len))
+        * split D(dim) into (H(n_heads), W(width of head)) ; D = H * W
+        """
+        ref = time.time()
+        q, k, v = self.proj_q(x), self.proj_k(x), self.proj_v(x)
+        q, k, v = (split_last(x, (self.n_heads, -1)).transpose(1, 2) for x in [q, k, v])
+        gen_qkv = time.time() - ref
+        # (B, H, S, W) @ (B, H, W, S) -> (B, H, S, S) -softmax-> (B, H, S, S)
+        scores = q @ k.transpose(-2, -1) / np.sqrt(k.size(-1))
+        if mask is not None:
+            mask = mask[:, None, None, :].float()
+            scores -= 10000.0 * (1.0 - mask)
+        scores = self.drop(F.softmax(scores, dim=-1))
+        # (B, H, S, S) @ (B, H, S, W) -> (B, H, S, W) -trans-> (B, S, H, W)
+        h = (scores @ v).transpose(1, 2).contiguous()
+        # -merge-> (B, S, D)
+        h = merge_last(h, 2)
+        self.scores = scores
+
+        att_time = time.time() - gen_qkv
+        whole_time = time.time() - ref
+        BENCHMARK_MAP_IN_S['ViT']['gen_qkv'] += gen_qkv
+        BENCHMARK_MAP_IN_S['ViT']['att_time'] += att_time
+        BENCHMARK_MAP_IN_S['ViT']['whole_time'] += whole_time
+
+        return h
+
+    def forward(self, x, mask, indices: Optional[torch.Tensor] = None):
+        return self.forward_benchmark(x, mask, indices)

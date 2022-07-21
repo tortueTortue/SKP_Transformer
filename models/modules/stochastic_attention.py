@@ -2,7 +2,9 @@ from torch import nn
 from torch.nn import  functional as F
 import torch
 import numpy as np
+import time
 
+from benchmarking import BENCHMARK_MAP_IN_S
 from training.utils.utils import get_default_device, to_device
 
 class KeyFinderNet(nn.Module):
@@ -113,5 +115,78 @@ class StochSelfAttention(nn.Module):
 
         return attention
 
+    def grid_sample_forward_no_class_embedding(self, x):
+        """
+        x, q(query), k(key), v(value) : (B(batch_size), S(seq_len), D(dim))
+        mask : (B(batch_size) x S(seq_len))
+        * split D(dim) into (H(n_heads), W(width of head)) ; D = H * W
+        """
+        q, k, v = self.proj_q(x), self.proj_k(x), self.proj_v(x)
+        batch_size, no_of_patches, dim = x.shape
+
+        grid_dim = int(np.sqrt(no_of_patches))
+
+        sample = self.key_net_2D(torch.concat((q,k), dim=2))
+        sample_x = torch.tensor_split(sample, no_of_patches, dim=2)[0]
+        sample_y = torch.tensor_split(sample, no_of_patches, dim=2)[1]
+
+        grid = torch.reshape(torch.cat((sample_x, sample_y), dim=1), (batch_size, grid_dim, grid_dim, 2))
+
+        k = torch.reshape(torch.transpose(k, dim0=1, dim1=2), (batch_size, dim, grid_dim, grid_dim))
+        v = torch.reshape(torch.transpose(v, dim0=1, dim1=2), (batch_size, dim, grid_dim, grid_dim))
+
+        sampled_key = F.grid_sample(k, grid, mode='bilinear', padding_mode='zeros', align_corners=False)
+        sampled_value = F.grid_sample(v, grid, mode='bilinear', padding_mode='zeros', align_corners=False)
+
+        # Swap back
+        sampled_key = torch.transpose(torch.reshape(sampled_key, (batch_size, dim, grid_dim * grid_dim)), dim0=1, dim1=2)
+        sampled_value = torch.transpose(torch.reshape(sampled_value, (batch_size, dim, grid_dim * grid_dim)), dim0=1, dim1=2)
+
+        attention_scores = torch.sum(q * sampled_key, dim=-1)
+        attention = torch.sigmoid(self.temperature_att_sc * attention_scores).unsqueeze(dim=2) * sampled_value
+
+        return attention
+
+    def grid_sample_forward_no_class_embedding_benchmark(self, x):
+        """
+        x, q(query), k(key), v(value) : (B(batch_size), S(seq_len), D(dim))
+        mask : (B(batch_size) x S(seq_len))
+        * split D(dim) into (H(n_heads), W(width of head)) ; D = H * W
+        """
+        ref = time.time()
+        q, k, v = self.proj_q(x), self.proj_k(x), self.proj_v(x)
+        batch_size, no_of_patches, dim = x.shape
+        gen_qkv = time.time() - ref
+
+        grid_dim = int(np.sqrt(no_of_patches))
+
+        sample = self.key_net_2D(torch.concat((q,k), dim=2))
+        sample_x = torch.tensor_split(sample, no_of_patches, dim=2)[0]
+        sample_y = torch.tensor_split(sample, no_of_patches, dim=2)[1]
+
+        grid = torch.reshape(torch.cat((sample_x, sample_y), dim=1), (batch_size, grid_dim, grid_dim, 2))
+
+        k = torch.reshape(torch.transpose(k, dim0=1, dim1=2), (batch_size, dim, grid_dim, grid_dim))
+        v = torch.reshape(torch.transpose(v, dim0=1, dim1=2), (batch_size, dim, grid_dim, grid_dim))
+
+        sampled_key = F.grid_sample(k, grid, mode='bilinear', padding_mode='zeros', align_corners=False)
+        sampled_value = F.grid_sample(v, grid, mode='bilinear', padding_mode='zeros', align_corners=False)
+        grid_sample_time = time.time() - gen_qkv
+
+        # Swap back
+        sampled_key = torch.transpose(torch.reshape(sampled_key, (batch_size, dim, grid_dim * grid_dim)), dim0=1, dim1=2)
+        sampled_value = torch.transpose(torch.reshape(sampled_value, (batch_size, dim, grid_dim * grid_dim)), dim0=1, dim1=2)
+
+        attention_scores = torch.sum(q * sampled_key, dim=-1)
+        attention = torch.sigmoid(self.temperature_att_sc * attention_scores).unsqueeze(dim=2) * sampled_value
+        att_time = time.time() - grid_sample_time
+        whole_time = time.time() - ref
+        BENCHMARK_MAP_IN_S['SampNet']['gen_qkv'] += gen_qkv
+        BENCHMARK_MAP_IN_S['SampNet']['grid_sample_time'] += grid_sample_time
+        BENCHMARK_MAP_IN_S['SampNet']['att_time'] += att_time
+        BENCHMARK_MAP_IN_S['SampNet']['whole_time'] += whole_time
+        
+        return attention
+
     def forward(self, x, indices):
-        return self.grid_sample_forward_no_class_embedding(x)
+        return self.grid_sample_forward_no_class_embedding_benchmark(x)

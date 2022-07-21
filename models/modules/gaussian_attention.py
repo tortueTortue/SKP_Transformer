@@ -2,7 +2,9 @@ from torch import nn
 from torch.nn import functional as F, Parameter
 import torch
 import numpy as np
+import time
 
+from benchmarking import BENCHMARK_MAP_IN_S
 from training.utils.utils import get_default_device, to_device
 
 class GaussianSelfAttention(nn.Module):
@@ -116,5 +118,57 @@ class GaussianSelfAttention(nn.Module):
 
         return attention
     
+
+    def forward_no_class_embed_benchmark(self, x, indices):
+        """
+        x, q(query), k(key), v(value) : (B(batch_size), S(seq_len), D(dim))
+        mask : (B(batch_size) x S(seq_len))
+        * split D(dim) into (H(n_heads), W(width of head)) ; D = H * W
+        """
+        ref = time.time()
+        q, k, v = self.proj_q(x), self.proj_k(x), self.proj_v(x)
+        batch_size, _, dim = x.shape
+        gen_qkv = time.time() - ref
+        # Load on GPU
+        self.cuda_avgs = Parameter(self.avgs[indices].cuda(), requires_grad=True,)
+        self.cuda_std_devs = Parameter(self.std_devs[indices].cuda(), requires_grad=True)
+
+        norm_x = torch.normal(mean=torch.zeros(batch_size, 1, self.no_of_patches, requires_grad=True), std=self.sigma * torch.ones(1, self.no_of_patches, requires_grad=True)).cuda()
+        norm_y = torch.normal(mean=torch.zeros(batch_size, 1, self.no_of_patches, requires_grad=True), std=self.sigma * torch.ones(1, self.no_of_patches, requires_grad=True)).cuda()
+        
+        _, _, avg_amnt = self.cuda_avgs.shape
+        avgs_x = torch.tensor_split(self.cuda_avgs, avg_amnt, dim=1)[0]
+        avgs_y = torch.tensor_split(self.cuda_avgs, avg_amnt, dim=1)[1]
+        stds_x = torch.tensor_split(self.cuda_std_devs, avg_amnt, dim=1)[0]
+        stds_y = torch.tensor_split(self.cuda_std_devs, avg_amnt, dim=1)[1]
+        
+        sample_x = torch.tanh((norm_x + avgs_x) * stds_x)
+        sample_y = torch.tanh((norm_y + avgs_y) * stds_y)
+
+        grid_dim = int(self.grid_dim)
+        grid = torch.reshape(torch.cat((sample_x, sample_y), dim=1), (batch_size, grid_dim, grid_dim, 2))
+
+
+        k = torch.reshape(torch.transpose(k, dim0=1, dim1=2), (batch_size, dim, grid_dim, grid_dim))
+        v = torch.reshape(torch.transpose(v, dim0=1, dim1=2), (batch_size, dim, grid_dim, grid_dim))
+
+        sampled_key = F.grid_sample(k, grid, mode='bilinear', padding_mode='zeros', align_corners=False)
+        sampled_value = F.grid_sample(v, grid, mode='bilinear', padding_mode='zeros', align_corners=False)
+        grid_sample_time = time.time() - gen_qkv
+        # Swap back
+        sampled_key = torch.transpose(torch.reshape(sampled_key, (batch_size, dim, grid_dim * grid_dim)), dim0=1, dim1=2)
+        sampled_value = torch.transpose(torch.reshape(sampled_value, (batch_size, dim, grid_dim * grid_dim)), dim0=1, dim1=2)
+
+        attention_scores = torch.sum(sampled_key * q, dim=-1)
+        attention = torch.sigmoid(self.temperature_att_sc * attention_scores).unsqueeze(dim=2) * sampled_value
+        att_time = time.time() - grid_sample_time
+        whole_time = time.time() - ref
+        BENCHMARK_MAP_IN_S['Gaussian']['gen_qkv'] += gen_qkv
+        BENCHMARK_MAP_IN_S['Gaussian']['grid_sample_time'] += grid_sample_time
+        BENCHMARK_MAP_IN_S['Gaussian']['att_time'] += att_time
+        BENCHMARK_MAP_IN_S['Gaussian']['whole_time'] += whole_time
+
+        return attention
+    
     def forward(self, x, indices):
-        return self.forward_no_class_embed(x, indices)
+        return self.forward_no_class_embed_benchmark(x, indices)
